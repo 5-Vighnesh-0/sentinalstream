@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Datasets, databases and trained models stay local (large / reproducible)
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
