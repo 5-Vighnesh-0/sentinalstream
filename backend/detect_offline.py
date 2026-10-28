@@ -21,7 +21,7 @@ COLUMNS = ["timestamp", "src_ip", "dst_ip", "attack_type", "score", "severity"]
 def detect(pcap, model_path) -> tuple[pd.DataFrame, int]:
     """Return (flagged rows, total flows)."""
     model, meta = load_model(model_path)
-    flows = flows_from_pcap(pcap)
+    flows, _ = flows_from_pcap(pcap)
     if not flows:
         return pd.DataFrame(columns=COLUMNS), 0
     X = pd.DataFrame([f.features() for f in flows], columns=FEATURES)

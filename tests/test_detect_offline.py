@@ -14,7 +14,7 @@ SAMPLE = "tests/fixtures/sample.pcap"
 
 def test_cli_flags_attack_flows_not_benign(tmp_path):
     # Train on the fixture's benign sessions only, so the scan/flood flows are unseen behaviour.
-    benign = [f.features() for f in flows_from_pcap(SAMPLE) if f.dst_port == 8080]
+    benign = [f.features() for f in flows_from_pcap(SAMPLE)[0] if f.dst_port == 8080]
     model, scoring = train_baseline.train(pd.DataFrame(benign, columns=FEATURES))
     model_path = tmp_path / "iforest.joblib"
     save_model(model, model_path, **scoring)

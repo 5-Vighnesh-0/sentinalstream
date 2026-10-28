@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -5,12 +7,12 @@ import pytest
 from backend.features.extractor import flows_from_pcap
 from backend.features.feature_set import FEATURES, from_cicids, load_model, packets_per_s, save_model, severity
 
-SAMPLE = "tests/fixtures/sample.pcap"
+SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample.pcap"
 
 
 @pytest.fixture(scope="module")
 def flows():
-    return {f.flow_key: f for f in flows_from_pcap(SAMPLE)}
+    return {f.flow_key: f for f in flows_from_pcap(SAMPLE)[0]}
 
 
 def test_sample_flow_count(flows):
