@@ -43,8 +43,12 @@ def test_zero_duration_rule():
     assert packets_per_s(5, 2.0) == 2.5
 
 
-def test_severity_thresholds():
+def test_severity_named_detections():
     assert [severity(c) for c in (0.95, 0.9, 0.8, 0.7, 0.69)] == ["high", "high", "medium", "medium", "low"]
+
+
+def test_severity_unnamed_anomalies_never_high():
+    assert [severity(c, named=False) for c in (1.0, 0.999, 0.998, 0.99)] == ["medium", "medium", "low", "low"]
 
 
 def test_from_cicids_cleans_and_maps():
@@ -76,4 +80,12 @@ def test_load_model_rejects_wrong_feature_order(tmp_path):
     sidecar = tmp_path / "m.features.json"
     sidecar.write_text(sidecar.read_text().replace('"fwd_packets"', '"renamed"'))
     with pytest.raises(ValueError, match="feature order"):
+        load_model(path)
+
+
+def test_load_model_rejects_tampered_file(tmp_path):
+    path = tmp_path / "m.joblib"
+    save_model({"dummy": True}, path)
+    path.write_bytes(path.read_bytes() + b"\0")
+    with pytest.raises(ValueError, match="sha256"):
         load_model(path)
