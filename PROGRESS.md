@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **Phase 1 — in progress (blocked on CICIDS2017 CSV download)**
+Current phase: **Phase 1 — awaiting `phase 1 accepted`**
 
 Phase 0 accepted ("documentation approved") on 2026-10-28.
 
@@ -128,7 +128,7 @@ The only `critical` hit is the API_SPEC example of an *invalid* severity value, 
 
 ## Phase 1 — Offline detection
 
-Plan: [plans/phase-1-PLAN.md](plans/phase-1-PLAN.md)
+Plan: [plans/phase-1-PLAN.md](plans/phase-1-PLAN.md) · Results: [docs/PHASE1_RESULTS.md](docs/PHASE1_RESULTS.md)
 
 ### Tasks completed
 
@@ -137,10 +137,92 @@ Plan: [plans/phase-1-PLAN.md](plans/phase-1-PLAN.md)
 - [x] `backend/ml/train_baseline.py`, `backend/detect_offline.py`
 - [x] `tests/fixtures/make_sample_pcap.py` → `tests/fixtures/sample.pcap` (600 packets, 71 flows)
 - [x] `tests/test_features.py`, `tests/test_detect_offline.py` — 10 passed
-- [x] docs/DATA_MODEL.md: `packets_per_s` is recomputed from counts/duration, not read from `Flow Packets/s`
-- [ ] Train Isolation Forest on CICIDS2017 Monday benign sample
-- [ ] Gate run, docs/PHASE1_RESULTS.md
+- [x] CICIDS2017 zip provided by the human (official form-gated download): 235,102,953 bytes, sha256 `c3f26274b36c837ccf28ffd2dbf4582941c30b3ee70a635c6e5b2f87c4727928`. Only the Monday CSV extracted.
+- [x] Isolation Forest trained on 50,000 benign Monday rows
+- [x] Gate run, reproduced from a clean clone, docs/PHASE1_RESULTS.md written
+- [x] Docs updated for the design changes below (DATA_MODEL, ARCHITECTURE, EVALUATION, LIMITATIONS, AGENTS, README)
+
+### Design changes (human-approved 2026-10-28)
+
+1. **TCP flag counts dropped from the shared subset (9 → 5 features).** In CICIDS2017 the `SYN/ACK/FIN/RST Flag Count` columns hold only 0/1 and are unreliable, so real per-flow counts from packets made every normal TCP session look anomalous. Human chose "drop the 4 flag features" over "0/1 presence" and "keep counts".
+2. **Isolation Forest flag rule:** anomaly score > 99th percentile of benign training scores (stored as `threshold` in the sidecar) instead of `predict() == -1` with `contamination="auto"`.
+
+### Investigation (one-off, scratch script — not a claimed result)
+
+First gate run with the original 9 features and `contamination="auto"`: `71 flows scored, 71 flagged`. Monday flag-column check (benign rows after cleaning):
+
+```text
+syn_count {0: 495915, 1: 33988}
+ack_count {0: 367498, 1: 162405}
+fin_count {0: 517743, 1: 12160}
+rst_count {0: 529831, 1: 72}
+multi-packet flows 120717
+syn_count {0: 118412, 1: 2305}
+```
+
+Variant comparison (scratch script in the session scratchpad, using the repo's `from_cicids` / `flows_from_pcap`; 50,000 Monday benign rows, `random_state=42`):
+
+```text
+contamination="auto":
+A counts (current)   flagged benign 20/20  scan 50/50  flood 1/1  | flagged on its own Monday training rows: 23.5%
+B binary flags       flagged benign 20/20  scan 50/50  flood 1/1  | flagged on its own Monday training rows: 23.5%
+C no flags           flagged benign 20/20  scan 0/50  flood 1/1  | flagged on its own Monday training rows: 31.1%
+threshold at benign-score percentile:
+A counts (current)   p99: benign 20/20  scan 0/50  flood 1/1  | Monday train flagged 0.90%
+B binary flags       p99: benign 20/20  scan 0/50  flood 1/1  | Monday train flagged 0.90%
+C no flags           p99: benign 0/20  scan 0/50  flood 1/1  | Monday train flagged 1.00%
+(p99.9 flagged nothing in any variant, including the flood)
+```
+
+### Evidence — gate run
+
+```text
+$ .venv/bin/pytest -q
+..........                                                               [100%]
+10 passed in 7.78s
+
+$ .venv/bin/python backend/ml/train_baseline.py --csv data/raw/cicids2017/MachineLearningCVE/Monday-WorkingHours.pcap_ISCX.csv
+read 529918 rows, dropped 15 invalid, 529903 benign; trained on 50000; saved models/isolation_forest.joblib
+
+$ .venv/bin/python backend/detect_offline.py --pcap tests/fixtures/sample.pcap --out data/phase1_detections.csv
+71 flows scored, 1 flagged -> data/phase1_detections.csv
+
+$ cat data/phase1_detections.csv
+timestamp,src_ip,dst_ip,attack_type,score,severity
+2023-11-14T22:14:20.299Z,127.0.0.1,127.0.0.1,anomaly,0.991,high
+
+$ python -c "...threshold from sidecar..."
+{'feature_order': ['flow_duration_s', 'fwd_packets', 'bwd_packets', 'total_bytes', 'packets_per_s'], 'n_train_rows': 50000, 'rows_read': 529918, 'rows_dropped_invalid': 15, 'benign_rows': 529903, 'flag_quantile': 0.99, 'threshold': 0.6738411569235067, 'sklearn_version': '1.9.1'}
+
+$ grep -rliE "fastapi|react" backend/ tests/ || echo "no FastAPI/React code"
+no FastAPI/React code
+```
+
+### Evidence — clean checkout
+
+```text
+$ git clone (clean checkout of HEAD) && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+$ unzip Monday CSV
+$ .venv/bin/pytest -q
+10 passed in 3.63s
+$ .venv/bin/python backend/ml/train_baseline.py --csv data/raw/cicids2017/MachineLearningCVE/Monday-WorkingHours.pcap_ISCX.csv
+read 529918 rows, dropped 15 invalid, 529903 benign; trained on 50000; saved models/isolation_forest.joblib
+$ .venv/bin/python backend/detect_offline.py --pcap tests/fixtures/sample.pcap --out data/phase1_detections.csv
+71 flows scored, 1 flagged -> data/phase1_detections.csv
+$ diff <clean>/data/phase1_detections.csv <workdir>/data/phase1_detections.csv && echo identical
+identical
+```
+
+### Gate verdict
+
+`python backend/detect_offline.py --pcap tests/fixtures/sample.pcap` yields a CSV with 1 flagged flow (the SYN flood); PHASE1_RESULTS.md matches the CSV; no FastAPI or React code. Reproducible from a clean clone given the CICIDS zip.
 
 ### Blockers
 
-- CICIDS2017 CSVs: the official download (https://www.unb.ca/cic/datasets/ids-2017.html → cicresearch.ca) now requires a registration form with personal details, so the agent cannot fetch it. The human downloads `MachineLearningCSV.zip` to `data/raw/cicids2017/`.
+None.
+
+### Known gaps (documented in LIMITATIONS.md)
+
+- Port scan flows are not flagged by Isolation Forest (0/50).
+- Every Isolation Forest alert has confidence ≥ 0.99, so severity is always `high`.
+- The sample's benign traffic is synthetic and near-identical; it is not evidence of a low false-positive rate.
