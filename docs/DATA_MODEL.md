@@ -83,13 +83,11 @@ Defined once in `backend/features/feature_set.py`. Order matters: it is the colu
 | 2 | `fwd_packets` | packets from the forward-direction sender | `Total Fwd Packets` |
 | 3 | `bwd_packets` | packets in the reverse direction | `Total Backward Packets` |
 | 4 | `total_bytes` | sum of transport payload lengths, both directions | `Total Length of Fwd Packets` + `Total Length of Bwd Packets` |
-| 5 | `packets_per_s` | (fwd + bwd) ÷ duration, zero-duration rule applies | `Flow Packets/s` |
-| 6 | `syn_count` | TCP packets with SYN set | `SYN Flag Count` |
-| 7 | `ack_count` | TCP packets with ACK set | `ACK Flag Count` |
-| 8 | `fin_count` | TCP packets with FIN set | `FIN Flag Count` |
-| 9 | `rst_count` | TCP packets with RST set | `RST Flag Count` |
+| 5 | `packets_per_s` | (fwd + bwd) ÷ duration; 0 when duration is 0 | Recomputed the same way from the columns above (equals `Flow Packets/s` except where CICFlowMeter wrote `Infinity`) |
 
-CICIDS2017 CSV column names have leading spaces; cleaning strips them before mapping. The zero-duration rule (how `packets_per_s` is defined when duration is 0) is written once in `feature_set.py` and applied to both CSV and live features. These features only approximate CICFlowMeter's; see [LIMITATIONS.md](LIMITATIONS.md).
+TCP flag counts (SYN/ACK/FIN/RST) were in the original design but were **dropped in Phase 1** with the human's approval: in CICIDS2017 the `* Flag Count` columns hold only 0/1 and are unreliable (most multi-packet benign TCP flows on Monday show no SYN at all), so true per-flow counts from live packets always looked anomalous. Evidence in PROGRESS.md (Phase 1).
+
+CICIDS2017 CSV column names have leading spaces; cleaning strips them before mapping. The zero-duration rule (`packets_per_s = 0` when duration is 0) is written once in `feature_set.py` and applied to both CSV and live features. Rows with NaN, infinite or negative values in the subset are dropped and counted. These features only approximate CICFlowMeter's; see [LIMITATIONS.md](LIMITATIONS.md).
 
 ### Flows (runtime)
 
@@ -112,17 +110,20 @@ models/random_forest.features.json
 ```json
 {
   "model": "isolation_forest",
-  "feature_order": ["flow_duration_s", "fwd_packets", "bwd_packets", "total_bytes",
-                    "packets_per_s", "syn_count", "ack_count", "fin_count", "rst_count"],
-  "trained_on": ["data/raw/cicids2017/Monday-WorkingHours.pcap_ISCX.csv"],
-  "n_train_rows": 0,
+  "feature_order": ["flow_duration_s", "fwd_packets", "bwd_packets", "total_bytes", "packets_per_s"],
   "sklearn_version": "x.y.z",
+  "created_at": "2026-10-28T10:15:30.123Z",
+  "trained_on": ["data/raw/cicids2017/MachineLearningCVE/Monday-WorkingHours.pcap_ISCX.csv"],
+  "n_train_rows": 50000,
   "random_state": 42,
-  "created_at": "2026-10-28T10:15:30.123Z"
+  "rows_read": 0, "rows_dropped_invalid": 0, "benign_rows": 0,
+  "flag_quantile": 0.99,
+  "threshold": 0.0,
+  "benign_score_quantiles": [0.0, "... 1001 values ..."]
 }
 ```
 
-Inference refuses to load a model whose `feature_order` differs from `feature_set.py`.
+`flag_quantile`, `threshold` and `benign_score_quantiles` are Isolation Forest only. Inference refuses to load a model whose `feature_order` differs from `feature_set.py`.
 
 ## Offline detection CSV (Phase 1)
 
@@ -141,6 +142,6 @@ Inference refuses to load a model whose `feature_order` differs from `feature_se
 
 | Path | Content | In git |
 |---|---|---|
-| `data/raw/cicids2017/*.csv` | CICIDS2017 MachineLearningCSV files (downloaded with approval) | No |
+| `data/raw/cicids2017/MachineLearningCSV.zip`, `data/raw/cicids2017/MachineLearningCVE/*.csv` | CICIDS2017 MachineLearningCSV files (downloaded with approval) | No |
 | `data/sentinelstream.db` | SQLite DB | No |
 | `tests/fixtures/` | Tiny synthetic PCAP/CSV fixtures for tests (Phase 1+) | Yes |

@@ -28,7 +28,7 @@ Rules for anyone working on SentinelStream, human or AI agent.
 
 ## Fixed design decisions (don't re-debate; if one proves impossible, stop and ask)
 
-- One shared feature module, `backend/features/feature_set.py`. Feature order is saved next to every model as `models/<name>.features.json`.
+- One shared feature module, `backend/features/feature_set.py`. Feature order is saved next to every model as `models/<name>.features.json`. TCP flag counts were removed from the subset in Phase 1 (human-approved; see PROGRESS.md).
 - Isolation Forest only outputs `anomaly` + score. Attack names come only from the supervised classifier.
 - Benchmark: CICIDS2017 CSVs, shared feature subset, stratified split, PPS rule vs Isolation Forest vs Random Forest.
 - Docker capture needs `network_mode: host` + `NET_RAW`/`NET_ADMIN`; the simulator shares the backend's network namespace.

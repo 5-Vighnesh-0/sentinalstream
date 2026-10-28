@@ -1,6 +1,8 @@
 # Progress
 
-Current phase: **Phase 0 — awaiting `documentation approved`**
+Current phase: **Phase 1 — in progress (blocked on CICIDS2017 CSV download)**
+
+Phase 0 accepted ("documentation approved") on 2026-10-28.
 
 ## Environment (recorded 2026-10-28)
 
@@ -40,7 +42,7 @@ Plugins: the GitHub MCP connector (`plugin:engineering:github`) is installed but
 
 ## Open questions
 
-1. GitHub remote URL: `gh repo view sentinelstream` under account `5-Vighnesh-0` found no repo by that name. Need the exact `owner/name` or URL before the first push.
+1. ~~GitHub remote URL~~ Resolved: `origin` = https://github.com/5-Vighnesh-0/sentinalstream. Phase 0 pushed as 405ab1d on top of the repo's initial commit.
 
 ---
 
@@ -121,3 +123,24 @@ docs/API_SPEC.md:66:**422** invalid parameter (e.g. `severity=critical`, `limit=
 ```
 
 The only `critical` hit is the API_SPEC example of an *invalid* severity value, as intended.
+
+---
+
+## Phase 1 — Offline detection
+
+Plan: [plans/phase-1-PLAN.md](plans/phase-1-PLAN.md)
+
+### Tasks completed
+
+- [x] `.venv` + `requirements.txt` (scapy 2.8.0, pandas 3.1.0, numpy 2.5.4, scikit-learn 1.9.1, pytest 9.2.0), `pytest.ini`
+- [x] `backend/features/feature_set.py`, `backend/features/extractor.py`
+- [x] `backend/ml/train_baseline.py`, `backend/detect_offline.py`
+- [x] `tests/fixtures/make_sample_pcap.py` → `tests/fixtures/sample.pcap` (600 packets, 71 flows)
+- [x] `tests/test_features.py`, `tests/test_detect_offline.py` — 10 passed
+- [x] docs/DATA_MODEL.md: `packets_per_s` is recomputed from counts/duration, not read from `Flow Packets/s`
+- [ ] Train Isolation Forest on CICIDS2017 Monday benign sample
+- [ ] Gate run, docs/PHASE1_RESULTS.md
+
+### Blockers
+
+- CICIDS2017 CSVs: the official download (https://www.unb.ca/cic/datasets/ids-2017.html → cicresearch.ca) now requires a registration form with personal details, so the agent cannot fetch it. The human downloads `MachineLearningCSV.zip` to `data/raw/cicids2017/`.

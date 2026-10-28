@@ -6,9 +6,9 @@ No results yet. Every number in this file and in README.md must come from `backe
 
 | Dataset | Role | Source | Status |
 |---|---|---|---|
-| CICIDS2017 MachineLearningCSV (CICFlowMeter flow CSVs, 8 files) | Primary: training and benchmark | Canadian Institute for Cybersecurity, University of New Brunswick (official download page) | Not downloaded. ~225 MB zip; ask before downloading. |
+| CICIDS2017 MachineLearningCSV (CICFlowMeter flow CSVs, 8 files) | Primary: training and benchmark | Canadian Institute for Cybersecurity, University of New Brunswick (official download page) | Downloaded by the human (registration form): 235,102,953 bytes, sha256 `c3f26274…4727928`. |
 | NSL-KDD | Optional secondary check | UNB CIC | Not planned unless time allows. |
-| Synthetic PCAP fixtures | Unit tests and Phase 1 gate | Generated in this repo with Scapy | Phase 1 |
+| Synthetic PCAP fixtures | Unit tests and Phase 1 gate | `tests/fixtures/make_sample_pcap.py` | Done (Phase 1) |
 
 ## Preparation
 
@@ -30,7 +30,7 @@ No results yet. Every number in this file and in README.md must come from `backe
 | Detector | Type | Flags a flow when |
 |---|---|---|
 | PPS rule | Threshold | `packets_per_s` > 99th percentile of benign training flows |
-| Isolation Forest | Unsupervised | `predict() == -1` |
+| Isolation Forest | Unsupervised | anomaly score > 99th percentile of benign training scores |
 | Random Forest | Supervised, `class_weight="balanced"` | predicted class ≠ `BENIGN` |
 
 ## Metrics

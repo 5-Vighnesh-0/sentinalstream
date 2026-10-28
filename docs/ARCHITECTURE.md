@@ -45,7 +45,7 @@ SentinelStream is a single-host pipeline: packets in, flows out, scores on flows
 
 | Component | Path (created in phase) | Responsibility |
 |---|---|---|
-| Shared feature module | `backend/features/feature_set.py` (1) | Single source of truth: feature names, order, CICIDS2017 column mapping, zero-duration rule. Used by training, offline detection, live inference and the benchmark. |
+| Shared feature module | `backend/features/feature_set.py` (1) | Single source of truth: feature names, order, CICIDS2017 column mapping, zero-duration rule, severity thresholds, model save/load. Used by training, offline detection, live inference and the benchmark. |
 | Flow extractor | `backend/features/extractor.py` (1) | `PcapReader` → group packets by 5-tuple → feature rows. |
 | Baseline trainer | `backend/ml/train_baseline.py` (1) | Isolation Forest on benign flows; saves model + feature order. |
 | Offline detector | `backend/detect_offline.py` (1) | CLI: PCAP in, CSV of flagged flows out. |
@@ -82,7 +82,7 @@ The `ml/` top-level directory is reserved for notebooks/exploration notes; all i
 ## Detection logic
 
 - **Random Forest** (supervised, Phase 5): flags a flow when the predicted class is not `BENIGN`. `attack_type` = predicted class, `confidence` = predicted class probability.
-- **Isolation Forest** (unsupervised, Phase 1): flags a flow when `predict() == -1`. It cannot name an attack, so `attack_type = "anomaly"`. `confidence` = percentile of the flow's anomaly score among the benign training scores.
+- **Isolation Forest** (unsupervised, Phase 1): flags a flow when its anomaly score exceeds the 99th percentile of benign training scores (`threshold` in the sidecar). It cannot name an attack, so `attack_type = "anomaly"`. `confidence` = percentile of the flow's anomaly score among the benign training scores, so every Isolation Forest alert has confidence ≥ 0.99.
 - **Combination:** if the Random Forest flags, its label wins. If only Isolation Forest flags, the alert is `"anomaly"`. If neither flags, no alert. Before Phase 5 only Isolation Forest is available.
 - **PPS rule** (benchmark baseline only): flags when `packets_per_s` exceeds the 99th percentile of benign training flows.
 - **Severity** from confidence: `high` ≥ 0.90, `medium` ≥ 0.70, otherwise `low`. These are initial, untuned values defined once in backend code.
