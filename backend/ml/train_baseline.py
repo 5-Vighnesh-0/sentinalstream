@@ -23,6 +23,7 @@ N_QUANTILES = 1001
 # Flag flows more anomalous than this fraction of benign training flows; contamination="auto"
 # flagged far too many benign Monday rows to be a usable alarm (see PROGRESS.md, Phase 1).
 FLAG_QUANTILE = 0.99
+FLAG_INDEX = 990  # np.linspace(0, 1, N_QUANTILES)[990] == FLAG_QUANTILE
 
 
 def build_model():
@@ -41,12 +42,9 @@ def anomaly_scores(model, X: pd.DataFrame) -> np.ndarray:
 def train(X: pd.DataFrame) -> tuple[object, dict]:
     """Fit on benign feature rows; return (model, scoring metadata to save in the sidecar)."""
     model = build_model().fit(X[FEATURES])
-    scores = anomaly_scores(model, X)
-    return model, {
-        "flag_quantile": FLAG_QUANTILE,
-        "threshold": float(np.quantile(scores, FLAG_QUANTILE)),
-        "benign_score_quantiles": np.quantile(scores, np.linspace(0, 1, N_QUANTILES)).round(6).tolist(),
-    }
+    quantiles = np.quantile(anomaly_scores(model, X), np.linspace(0, 1, N_QUANTILES)).tolist()
+    # Threshold is taken from the same grid confidence uses, so a flagged flow never reports < FLAG_QUANTILE.
+    return model, {"flag_quantile": FLAG_QUANTILE, "threshold": quantiles[FLAG_INDEX], "benign_score_quantiles": quantiles}
 
 
 def score(model, meta: dict, X: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:

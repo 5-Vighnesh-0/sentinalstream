@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 
+import numpy as np
 import pandas as pd
 
 from backend.detect_offline import COLUMNS
@@ -57,3 +58,13 @@ def test_train_baseline_cli_on_cicids_shaped_csv(tmp_path):
     assert meta["benign_rows"] == rows - 10
     assert len(meta["benign_score_quantiles"]) == train_baseline.N_QUANTILES
     assert meta["flag_quantile"] == train_baseline.FLAG_QUANTILE
+
+
+def test_flagged_flows_always_have_confidence_at_least_p99():
+    rng = np.random.default_rng(0)
+    benign = pd.DataFrame(rng.lognormal(size=(2000, len(FEATURES))), columns=FEATURES)
+    model, scoring = train_baseline.train(benign)
+    flagged, confidence = train_baseline.score(model, scoring, pd.concat([benign, benign * 50], ignore_index=True))
+    assert flagged.any()
+    assert confidence[flagged].min() >= train_baseline.FLAG_QUANTILE
+    assert scoring["threshold"] == scoring["benign_score_quantiles"][train_baseline.FLAG_INDEX]
