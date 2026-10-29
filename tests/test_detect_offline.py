@@ -1,37 +1,48 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from backend.detect_offline import COLUMNS
-from backend.features.extractor import flows_from_pcap
-from backend.features.feature_set import FEATURES, save_model
+from backend.features.feature_set import FEATURES
 from backend.ml import train_baseline
 
-SAMPLE = "tests/fixtures/sample.pcap"
+REPO = Path(__file__).resolve().parents[1]
+SAMPLE = REPO / "tests" / "fixtures" / "sample.pcap"
+FLOOD = "TCP|127.0.0.1|60000|127.0.0.1|80"
 
 
-def test_cli_flags_attack_flows_not_benign(tmp_path):
-    # Train on the fixture's benign sessions only, so the scan/flood flows are unseen behaviour.
-    benign = [f.features() for f in flows_from_pcap(SAMPLE)[0] if f.dst_port == 8080]
-    model, scoring = train_baseline.train(pd.DataFrame(benign, columns=FEATURES))
-    model_path = tmp_path / "iforest.joblib"
-    save_model(model, model_path, **scoring)
-    out = tmp_path / "out.csv"
-
-    result = subprocess.run(
-        [sys.executable, "backend/detect_offline.py", "--pcap", SAMPLE, "--model", str(model_path), "--out", str(out)],
-        capture_output=True, text=True, check=True,
+def run_cli(pcap, out):
+    return subprocess.run(
+        [sys.executable, "backend/detect_offline.py", "--pcap", str(pcap), "--out", str(out)],
+        cwd=REPO, capture_output=True, text=True,
     )
 
-    df = pd.read_csv(out)
+
+def test_cli_with_committed_model(tmp_path):
+    result = run_cli(SAMPLE, tmp_path / "out.csv")
+    assert result.returncode == 0, result.stderr
+    df = pd.read_csv(tmp_path / "out.csv")
     assert list(df.columns) == COLUMNS
-    assert len(df) >= 1
-    assert set(df["attack_type"]) == {"anomaly"}
-    assert df["score"].between(0, 1).all()
-    assert f"71 flows scored, {len(df)} flagged" in result.stdout
+    iforest, rule = df[df["source"] == "isolation_forest"], df[df["source"] == "rule"]
+    assert iforest["flow_key"].tolist() == [FLOOD]
+    assert iforest["score"].min() >= train_baseline.FLAG_QUANTILE
+    assert set(iforest["severity"]) <= {"low", "medium"}  # unnamed anomalies are never high (D6)
+    assert rule["attack_type"].tolist() == ["PortScan"]
+    assert rule["flow_key"].str.contains("|55555|", regex=False).all()
+    assert not df["flow_key"].str.contains("|8080", regex=False).any()  # no benign session flagged
+    assert "71 flows scored, 2 alerts (1 isolation_forest, 1 rule)" in result.stdout
+
+
+def test_cli_rejects_non_capture_file(tmp_path):
+    bogus = tmp_path / "x.pcap"
+    bogus.write_text("not a capture")
+    result = run_cli(bogus, tmp_path / "o.csv")
+    assert result.returncode != 0
+    assert "not a pcap/pcapng file" in result.stderr
 
 
 def test_train_baseline_cli_on_cicids_shaped_csv(tmp_path):

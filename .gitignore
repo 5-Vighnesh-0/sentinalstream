@@ -9,8 +9,6 @@ __pycache__/
 node_modules/
 frontend/dist/
 
-# Datasets, databases and trained models stay local (large / reproducible)
+# Datasets and databases stay local (large, licence-gated). Trained models are committed (D3).
 data/*
 !data/.gitkeep
-models/*
-!models/.gitkeep
