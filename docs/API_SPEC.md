@@ -3,7 +3,8 @@
 Base URL: `http://localhost:8000`. Implemented in Phase 3 (`backend/api/main.py`).
 
 - No authentication. The backend binds `127.0.0.1` only. See [ARCHITECTURE.md](ARCHITECTURE.md#trust-boundary).
-- CORS allows origin `http://localhost:3000`.
+- CORS allows origins `http://localhost:3000` and `http://127.0.0.1:3000` only; never `*`.
+- Host header must be `localhost` or `127.0.0.1` (TrustedHostMiddleware) → else **400**. Blocks DNS rebinding.
 - Errors use FastAPI's default shape: `{"detail": "..."}` (validation errors: `{"detail": [ ... ]}` with status 422).
 - Timestamps are ISO-8601 UTC strings. Field definitions are in [DATA_MODEL.md](DATA_MODEL.md).
 
@@ -23,6 +24,9 @@ Used by `GET /alerts` and the WebSocket `alert` message.
   "attack_type": "PortScan",
   "confidence": 0.93,
   "severity": "high",
+  "source": "rule",
+  "count": 1,
+  "last_seen": "2026-10-28T10:15:30.123Z",
   "batch_id": null,
   "flow_id": "9a8b7c6d5e4f40312a1b0c9d8e7f6a5b"
 }
@@ -35,8 +39,10 @@ Liveness check.
 **200**
 
 ```json
-{"status": "ok"}
+{"status": "ok", "model_loaded": true}
 ```
+
+`model_loaded` is false when no model file is present; the dashboard banner shows it.
 
 ## `GET /alerts`
 
@@ -71,9 +77,13 @@ Upload a capture for offline analysis. `multipart/form-data` with one field `fil
 
 Validation, in order:
 
+0. `Origin` must be `http://localhost:3000` or `http://127.0.0.1:3000` and header `X-Sentinel-Upload: 1` must be present → else **403**. (A plain multipart POST needs no CORS preflight, so this blocks cross-site uploads.)
 1. Extension (case-insensitive) must be `.pcap` or `.pcapng` → else **400** `{"detail": "File must be .pcap or .pcapng"}`.
 2. Size is counted while streaming to disk; over 50 MB the write stops, the partial file is deleted → **413** `{"detail": "File exceeds 50 MB limit"}`.
-3. The file is saved under a temp directory as `<uuid4 hex>.<ext>`. The client filename is never used as a path; it is stored in `upload_batches.filename` for display only.
+3. The file is saved under a temp directory as `<uuid4 hex>.<ext>`. The client filename is never used as a path; it is stored in `upload_batches.filename` for display only, after sanitising to `[A-Za-z0-9._ -]`.
+4. The first 4 bytes must be a pcap/pcapng magic number → else **400** `{"detail": "Not a pcap/pcapng file"}` (gzip is rejected; Scapy would decompress it past the size cap).
+5. At most 1 upload processing and 2 queued → else **429**.
+6. Parsing runs in a subprocess with memory and CPU limits and a timeout; any failure marks the batch `failed`. The temp directory is wiped and stale `pending`/`processing` batches are marked `failed` at startup.
 
 Processing runs in the background PCAP worker. Alerts it produces carry the new `batch_id` and are both stored and broadcast on the WebSocket. The temp file is deleted when processing ends.
 
@@ -87,7 +97,7 @@ Processing runs in the background PCAP worker. Alerts it produces carry the new 
 
 ## `WS /ws/alerts`
 
-Server → client JSON messages. Messages the client sends are ignored.
+Server → client JSON messages. Messages the client sends are ignored. The server closes the connection with code **1008** unless `Origin` is `http://localhost:3000` or `http://127.0.0.1:3000` (CORS does not protect WebSockets).
 
 Every message has the shape `{"type": "...", "data": {...}}`.
 
@@ -109,6 +119,8 @@ Sent every 1 second. Feeds the traffic chart and the Demo Mode banner (shown whe
   "data": {
     "timestamp": "2026-10-28T10:15:31.000Z",
     "packets_per_s": 412.0,
+    "dropped_flows": 0,
+    "dropped_alerts": 0,
     "active_flows": 17,
     "dropped_packets": 0,
     "iface": "lo"
@@ -129,4 +141,5 @@ Sent when an upload batch changes status.
 ### Connection behaviour
 
 - No history is replayed on connect. The dashboard loads history with `GET /alerts` and then applies live messages, deduplicating by `id`.
+- Aggregated alerts (D4) are re-sent with the new `count` at most once per second per alert.
 - A client that cannot keep up is disconnected. The dashboard reconnects with exponential backoff (1 s, 2 s, 4 s … capped at 30 s) and re-fetches `GET /alerts`.

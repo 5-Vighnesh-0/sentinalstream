@@ -19,11 +19,16 @@ Conventions: timestamps are ISO-8601 UTC strings with milliseconds (`2026-10-28T
 | `protocol` | TEXT | NOT NULL, CHECK IN (`TCP`,`UDP`,`ICMP`,`OTHER`) | |
 | `attack_type` | TEXT | NOT NULL | See [attack types](#attack-types) |
 | `confidence` | REAL | NOT NULL, CHECK 0 ≤ x ≤ 1 | See [ARCHITECTURE.md](ARCHITECTURE.md#detection-logic) |
-| `severity` | TEXT | NOT NULL, CHECK IN (`low`,`medium`,`high`) | Derived from confidence |
+| `severity` | TEXT | NOT NULL, CHECK IN (`low`,`medium`,`high`) | Derived from confidence and source (D6) |
+| `source` | TEXT | NOT NULL, CHECK IN (`rule`,`random_forest`,`isolation_forest`) | Detector that raised it (D2) |
+| `count` | INTEGER | NOT NULL DEFAULT 1 | Detections merged into this alert (D4) |
+| `last_seen` | TEXT | NOT NULL | Latest merged detection; `timestamp` is the first (D4) |
 | `batch_id` | INTEGER | NULL, FK → `upload_batches.id` | NULL for live capture |
 | `flow_id` | TEXT | NULL, FK → `flows.id` | Added at the user's request (Phase 0) so an analyst can open the features behind an alert |
 
 Indexes: `timestamp DESC`, `severity`, `attack_type`, `batch_id`.
+
+**Aggregation (D4):** a detection with the same (`src_ip`, `dst_ip`, `attack_type`) as an alert whose `last_seen` is < 30 s old updates that alert (`count` + 1, `last_seen`, highest `confidence`/`severity`) instead of inserting a new row. Retention: at most 100,000 alerts, oldest deleted first (Phase 3).
 
 ### `flows`
 
@@ -55,7 +60,8 @@ Write order: `flows` row before the `alerts` row that references it, in the same
 
 | Value | Source |
 |---|---|
-| `anomaly` | Isolation Forest only (no supervised label) |
+| `anomaly` | Isolation Forest only (no named detector fired) |
+| `PortScan` (also) | Cross-flow scan rule (Phase 1, `source="rule"`) |
 | `DoS`, `DDoS`, `PortScan`, `BruteForce`, `WebAttack`, `Bot`, `Infiltration`, `Heartbleed` | Random Forest (Phase 5), grouped from CICIDS2017 labels below |
 
 `BENIGN` is a training label and is never stored as an alert.
@@ -92,7 +98,7 @@ CICIDS2017 CSV column names have leading spaces; cleaning strips them before map
 ### Flows (runtime)
 
 - Key: 5-tuple (`src_ip`, `dst_ip`, `src_port`, `dst_port`, `protocol`), bidirectional. The first packet's sender defines the forward direction.
-- Export: idle timeout 5 s, active timeout 10 s (a long-lived flow is scored every 10 s), or TCP FIN/RST from both sides. Checked on a 1-second tick. Values are initial and documented as a limitation.
+- Export: idle timeout 5 s, active timeout 10 s (a long-lived flow is scored every 10 s), or TCP FIN from both sides, or any RST. Checked on a 1-second tick. Values are initial and documented as a limitation.
 
 ## Model artifacts (`models/`)
 
@@ -116,18 +122,19 @@ models/random_forest.features.json
   "trained_on": ["data/raw/cicids2017/MachineLearningCVE/Monday-WorkingHours.pcap_ISCX.csv"],
   "n_train_rows": 50000,
   "random_state": 42,
+  "sha256": "<sha256 of the .joblib file>",
   "rows_read": 0, "rows_dropped_invalid": 0, "benign_rows": 0,
   "flag_quantile": 0.99,
   "threshold": 0.0,
-  "benign_score_quantiles": [0.0, "... 1001 values ..."]
+  "benign_score_quantiles": [0.0, "... 1001 values; threshold == element 990 ..."]
 }
 ```
 
-`flag_quantile`, `threshold` and `benign_score_quantiles` are Isolation Forest only. Inference refuses to load a model whose `feature_order` differs from `feature_set.py`.
+`flag_quantile`, `threshold` and `benign_score_quantiles` are Isolation Forest only. Models are committed to git, saved with `joblib` `compress=3` (D3). Loading refuses a model whose `feature_order` differs from `feature_set.py` or whose file doesn't match `sha256`.
 
 ## Offline detection CSV (Phase 1)
 
-`backend/detect_offline.py` output, one row per flagged flow:
+`backend/detect_offline.py` output, one row per alert. Only TCP/UDP flows are scored (CICIDS2017 has no ICMP flows to learn from).
 
 | Column | Example |
 |---|---|
@@ -135,8 +142,10 @@ models/random_forest.features.json
 | `src_ip` | `127.0.0.1` |
 | `dst_ip` | `127.0.0.1` |
 | `attack_type` | `anomaly` |
-| `score` | `0.97` (same meaning as `confidence`) |
-| `severity` | `high` |
+| `score` | `0.991` (same meaning as `confidence`) |
+| `severity` | `low` (IF-only: `low`/`medium`; named: up to `high`) |
+| `source` | `isolation_forest` or `rule` |
+| `flow_key` | `TCP\|127.0.0.1\|60000\|127.0.0.1\|80` |
 
 ## Datasets on disk
 

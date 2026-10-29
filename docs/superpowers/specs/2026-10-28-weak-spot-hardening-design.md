@@ -93,7 +93,7 @@ For the project as a whole and for each case (component or use case), name every
 | Hostile PCAP can exhaust memory/CPU or crash the API process | Parse uploads in a subprocess with `RLIMIT_AS`, `RLIMIT_CPU`, timeout, packet/flow caps | Phase 3 | Test: oversized/garbage file → batch `failed`, API alive |
 | Upload backlog unbounded; temp files leak; batches stuck `pending` after crash | Queue 1 running + 2 waiting else 429; dedicated temp dir wiped at startup; stale batches → `failed` at boot | Phase 3 | test_api |
 | DB grows forever | Retention: max rows (default 100,000) oldest-first delete | Phase 3 | Test |
-| Model file not tied to sidecar | sha256 check + path must be under `models/` | Phase 1 (`load_model`) | Unit test with tampered file |
+| Model file not tied to sidecar | sha256 check + path must be under `models/` | Phase 1 (sha256) / Phase 3 (path, where `SENTINEL_MODEL_PATH` is read) | Unit test with tampered file |
 | Filenames with newlines/ANSI forge logs | Sanitise to `[A-Za-z0-9._ -]`, log with `%r` | Phase 3 | Test |
 | Crash loses ≤ 2 s of already-broadcast alerts | LIMITATIONS | Docs | — |
 
@@ -145,6 +145,20 @@ For the project as a whole and for each case (component or use case), name every
 Phase 1 code: Case 1 all rows, Case 2 rows 1–2 and the held-out FPR report, Case 3 (scan rule, offline), `load_model` sha256 check, magic-byte check helper, `flow_key` in CSV, test path fixes, D3/D6 if approved.
 Docs: decisions D1–D6, every later-phase row above added to its phase's deliverables/gate in PHASES.md, LIMITATIONS additions, citation, ARCHITECTURE/DATA_MODEL/API_SPEC updates (schema: `source`, D4 fields).
 Not now: anything that needs FastAPI, React, Docker or the simulator to exist.
+
+## Ultra trims (approved 2026-10-29)
+
+Applied after review with ponytail ultra; each item moved to the phase that already owns it or was dropped as unjustified:
+
+| Item | Outcome |
+|---|---|
+| ICMP echo direction, ICMPv6 echo branch | Dropped: only TCP/UDP flows are scored (CICIDS2017 has no ICMP), so the loopback-ping bug can't affect results |
+| Sub-µs Decimal timestamps | Dropped: pcap and CICFlowMeter are µs-resolution; documented in LIMITATIONS |
+| Flow cap + eviction in the offline reader | Moved to Phase 2's flow table (D5 replaces the offline loop) |
+| Fine tail-quantile grid | Dropped: the 1,001-point grid already has p99.9; threshold now taken from the grid (index 990) |
+| Cross-day false-positive report | Moved to Phase 5 benchmark |
+| scikit-learn version warning | Dropped: scikit-learn raises `InconsistentVersionWarning` itself |
+| Copying later-phase details into 9 docs | PHASES.md gates + contract docs only; this spec is the detail |
 
 ## Out of scope
 

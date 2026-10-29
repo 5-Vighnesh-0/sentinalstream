@@ -2,13 +2,13 @@
 
 Real-time network intrusion detection on a single laptop CPU. SentinelStream captures live traffic (or reads a PCAP), groups packets into flows, scores each flow with machine-learning detectors, and streams alerts to a React dashboard over WebSocket.
 
-> **Status: Phase 1 — offline detection.** See [docs/PHASES.md](docs/PHASES.md) for the plan and [PROGRESS.md](PROGRESS.md) for what's done.
+> **Status: Phase 1 — offline detection (hardened).** See [docs/PHASES.md](docs/PHASES.md) for the plan and [PROGRESS.md](PROGRESS.md) for what's done.
 
 ## What it does
 
 - **Live capture** from an interface (default `lo`) with Scapy, non-blocking, with a bounded queue that drops the oldest packets under load.
 - **Flow features**: duration, forward/backward packet counts, total bytes, packets/s — one shared definition used for training and live inference.
-- **Detection**: a Random Forest that names attack types (trained on CICIDS2017) plus an Isolation Forest that flags unknown anomalies.
+- **Detection**: a port-scan rule and (Phase 5) a Random Forest trained on CICIDS2017 that name attack types, plus an Isolation Forest that flags unnamed anomalies.
 - **Dashboard**: live alert feed with severity and attack-type filters, packets/s chart, attack distribution, PCAP upload.
 - **Offline and free**: no cloud, no paid APIs, no GPU, no telemetry.
 
@@ -53,6 +53,10 @@ _Placeholder — no numbers yet._ Phase 5 adds a benchmark of a packets-per-seco
 ## Stack
 
 Python 3.11+, Scapy, pandas, NumPy, scikit-learn, FastAPI, Uvicorn, SQLite · React 18, Vite, Tailwind CSS, Recharts · pytest, Vitest · Docker Compose, GitHub Actions.
+
+## Citation
+
+Trained on CICIDS2017: Sharafaldin, Lashkari, Ghorbani, "Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization", ICISSP 2018.
 
 ## License
 

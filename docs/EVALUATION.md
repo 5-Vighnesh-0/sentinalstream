@@ -7,6 +7,7 @@ No results yet. Every number in this file and in README.md must come from `backe
 | Dataset | Role | Source | Status |
 |---|---|---|---|
 | CICIDS2017 MachineLearningCSV (CICFlowMeter flow CSVs, 8 files) | Primary: training and benchmark | Canadian Institute for Cybersecurity, University of New Brunswick (official download page) | Downloaded by the human (registration form): 235,102,953 bytes, sha256 `c3f26274…4727928`. |
+| Citation | — | Sharafaldin, Lashkari, Ghorbani, "Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization", ICISSP 2018 | Required by the dataset's terms |
 | NSL-KDD | Optional secondary check | UNB CIC | Not planned unless time allows. |
 | Synthetic PCAP fixtures | Unit tests and Phase 1 gate | `tests/fixtures/make_sample_pcap.py` | Done (Phase 1) |
 
@@ -45,19 +46,25 @@ Binary task (attack vs benign) so all three detectors are comparable. Positive c
 | False-positive rate on benign flows | FP / (FP + TN) |
 | Per-flow inference latency | Median and p95 wall-clock time of 1,000 single-flow `predict` calls on random test rows, in ms. CPU model recorded with the results. |
 
-Random Forest also gets a per-class precision/recall/F1 table (multi-class), since it is the only detector that names attacks.
+Also reported for every detector: PR-AUC, and recall at 1% false-positive rate (so detectors fixed at ~1% FPR compare fairly with the Random Forest). One extra run holds out one attack family from training. The benchmark loads the committed model files and prints their sha256.
+
+Random Forest also gets a per-class precision/recall/F1 table with support (test rows per class); classes with < 100 rows are merged or dropped. It (multi-class), since it is the only detector that names attacks.
 
 ## Results table (template)
 
 Command: `python backend/evaluation/benchmark.py` (Phase 5). Outputs a Markdown table and a CSV.
 
-| Detector | Precision | Recall | F1 | FPR (benign) | Latency p50 (ms) | Latency p95 (ms) |
-|---|---|---|---|---|---|---|
-| PPS rule | — | — | — | — | — | — |
-| Isolation Forest | — | — | — | — | — | — |
-| Random Forest | — | — | — | — | — | — |
+| Detector | Precision | Recall | F1 | FPR (benign) | PR-AUC | Recall @1% FPR | Latency p50 (ms) | Latency p95 (ms) |
+|---|---|---|---|---|---|---|---|---|
+| PPS rule | — | — | — | — | — | — | — | — |
+| Isolation Forest | — | — | — | — | — | — | — | — |
+| Random Forest | — | — | — | — | — | — | — | — |
 
 Test rows: — benign, — attack. Hardware: —. Commit: —.
+
+## Not benchmarked
+
+The port-scan rule needs source IPs and timestamps, which MachineLearningCSV doesn't have. It is tested on PCAP fixtures only (`tests/test_scan_rule.py`).
 
 ## Live default
 

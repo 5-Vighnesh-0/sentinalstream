@@ -29,7 +29,9 @@ Rules for anyone working on SentinelStream, human or AI agent.
 ## Fixed design decisions (don't re-debate; if one proves impossible, stop and ask)
 
 - One shared feature module, `backend/features/feature_set.py`. Feature order is saved next to every model as `models/<name>.features.json`. TCP flag counts were removed from the subset in Phase 1 (human-approved; see PROGRESS.md).
-- Isolation Forest only outputs `anomaly` + score. Attack names come only from the supervised classifier.
+- Isolation Forest only outputs `anomaly` + score. Attack names come from the supervised classifier and, since the Phase 1 hardening pass (human-approved D2), from the cross-flow port-scan rule (`source="rule"`).
+- Trained models are committed to git, compressed, and refused at load if their sha256 doesn't match the sidecar (D3).
+- Weak-spot decisions D1–D6 and which phase owns each fix: [docs/superpowers/specs/2026-10-28-weak-spot-hardening-design.md](docs/superpowers/specs/2026-10-28-weak-spot-hardening-design.md).
 - Benchmark: CICIDS2017 CSVs, shared feature subset, stratified split, PPS rule vs Isolation Forest vs Random Forest.
 - Docker capture needs `network_mode: host` + `NET_RAW`/`NET_ADMIN`; the simulator shares the backend's network namespace.
 - Queue overflow: `get_nowait()` once, then `put_nowait()`, log a warning with a dropped counter. Never block the sniff callback.

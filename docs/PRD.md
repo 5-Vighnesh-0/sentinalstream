@@ -14,7 +14,7 @@ A small organisation rarely has a SIEM or a dedicated security team. The person 
 ## Goals
 
 1. Detect suspicious flows from live traffic or a PCAP file and show them in a browser dashboard in near real time.
-2. Combine a supervised classifier (named attack types) with an unsupervised anomaly detector (unknown patterns).
+2. Combine a cross-flow port-scan rule and a supervised classifier (named attack types) with an unsupervised anomaly detector (unknown patterns); Phase 5 measures whether the combination helps.
 3. Publish benchmark numbers that anyone can reproduce with one command.
 4. Run fully offline on one laptop CPU once dependencies and data are downloaded. $0 budget.
 

@@ -50,7 +50,8 @@ SentinelStream is a single-host pipeline: packets in, flows out, scores on flows
 | Baseline trainer | `backend/ml/train_baseline.py` (1) | Isolation Forest on benign flows; saves model + feature order. |
 | Offline detector | `backend/detect_offline.py` (1) | CLI: PCAP in, CSV of flagged flows out. |
 | Capture | `backend/capture/sniffer.py` (2) | `CaptureThread` (daemon): Scapy sniff, non-blocking enqueue, drop-oldest, dropped-packet counter. |
-| Flow table | `backend/features/flow_table.py` (2) | Active flows keyed by 5-tuple; 1 s tick exports flows on idle/active timeout or FIN/RST. |
+| Flow table | `backend/features/flow_table.py` (2) | Active flows keyed by 5-tuple, capped; driven by packet timestamps so the same table serves offline CLI, PCAP upload and live capture (D5); exports on idle/active timeout, both FINs, or any RST. |
+| Scan rule | `backend/detection/scan_rule.py` (1) | Cross-flow port-scan detection (D2). |
 | Pipeline | `backend/pipeline.py` (2) | Wires capture → flow table → inference worker → alert sinks. `--iface` flag. |
 | DB writer | `backend/db/writer.py` (3) | Writer thread with one long-lived SQLite connection; batched inserts. |
 | API | `backend/api/main.py` (3) | FastAPI app: REST endpoints, WebSocket broadcaster, upload handling, startup/shutdown of pipeline threads. |
@@ -82,10 +83,11 @@ The `ml/` top-level directory is reserved for notebooks/exploration notes; all i
 ## Detection logic
 
 - **Random Forest** (supervised, Phase 5): flags a flow when the predicted class is not `BENIGN`. `attack_type` = predicted class, `confidence` = predicted class probability.
-- **Isolation Forest** (unsupervised, Phase 1): flags a flow when its anomaly score exceeds the 99th percentile of benign training scores (`threshold` in the sidecar). It cannot name an attack, so `attack_type = "anomaly"`. `confidence` = percentile of the flow's anomaly score among the benign training scores, so every Isolation Forest alert has confidence ≥ 0.99.
-- **Combination:** if the Random Forest flags, its label wins. If only Isolation Forest flags, the alert is `"anomaly"`. If neither flags, no alert. Before Phase 5 only Isolation Forest is available.
+- **Isolation Forest** (unsupervised, Phase 1): runs on `log1p` of the features; flags a flow when its anomaly score exceeds the 99th percentile of benign training scores (`threshold` in the sidecar). It cannot name an attack, so `attack_type = "anomaly"`. `confidence` = percentile of the flow's anomaly score among the benign training scores, so every Isolation Forest alert has confidence ≥ 0.99.
+- **Port-scan rule** (Phase 1, D2): ≥ 20 distinct (dst_ip, dst_port) from one source within 10 s → one `PortScan` alert per source per 10 s, `source="rule"`, confidence 1.0.
+- **Combination:** Random Forest label first, then the scan rule, then Isolation Forest `"anomaly"`. Only TCP/UDP flows are scored. Every alert records its `source`.
 - **PPS rule** (benchmark baseline only): flags when `packets_per_s` exceeds the 99th percentile of benign training flows.
-- **Severity** from confidence: `high` ≥ 0.90, `medium` ≥ 0.70, otherwise `low`. These are initial, untuned values defined once in backend code.
+- **Severity** (D6): named detections (rule, Random Forest) `high` ≥ 0.90, `medium` ≥ 0.70, else `low`. Isolation-Forest-only alerts are `low`, or `medium` above p99.9 of benign scores, never `high`. Untuned; defined once in `feature_set.py`.
 
 Which detector is the live default is decided from the Phase 5 benchmark and stated in README.md.
 
@@ -96,9 +98,9 @@ Untrusted inputs, all validated at the edge:
 | Input | Risk | Control |
 |---|---|---|
 | Network packets | Malformed or adversarial packets; floods | Scapy parsing inside try/except; bounded queue with drop-oldest; no payload stored. |
-| Uploaded PCAP files | Oversized files, path traversal, parser crashes | 50 MB cap enforced while streaming; extension must be `.pcap` or `.pcapng`; saved under a generated filename in a temp dir (client filename is never used as a path, only stored as display text); parse errors mark the batch `failed`. |
-| HTTP/WS clients | No auth exists | Backend binds `127.0.0.1:8000`; CORS allows only `http://localhost:3000`; query parameters validated by FastAPI/Pydantic; SQL uses bound parameters only. |
-| Dataset CSVs / model files | `joblib` files execute code when loaded | Only load models this repo trained into `models/`; never load models from uploads or the network. |
+| Uploaded PCAP files | Oversized files, gzip bombs, path traversal, parser crashes, memory exhaustion | 50 MB cap enforced while streaming; extension must be `.pcap` or `.pcapng`; saved under a generated filename in a temp dir (client filename is never used as a path, only stored as display text); parse errors mark the batch `failed`. |
+| HTTP/WS clients | No auth; any browser tab can reach 127.0.0.1 | Backend binds `127.0.0.1:8000`; Host allowlist (DNS rebinding); WS Origin check (CORS doesn't cover WS); upload needs Origin + `X-Sentinel-Upload` header (CSRF); query parameters validated by Pydantic; SQL uses bound parameters only. See [API_SPEC.md](API_SPEC.md). |
+| Dataset CSVs / model files | `joblib` files execute code when loaded | Only models committed to `models/`; sha256 checked against the sidecar; `SENTINEL_MODEL_PATH` must resolve under `models/` (Phase 3); never from uploads or the network. |
 
 Trusted: the host OS, the Python process, files under the repo root.
 
