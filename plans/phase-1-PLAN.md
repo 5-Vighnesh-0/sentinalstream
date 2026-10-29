@@ -22,6 +22,8 @@
 | create | tests/fixtures/make_sample_pcap.py, tests/fixtures/sample.pcap |
 | create | tests/test_features.py, tests/test_detect_offline.py |
 | create | docs/PHASE1_RESULTS.md |
+| create (hardening) | backend/detection/__init__.py, backend/detection/scan_rule.py, tests/test_extractor.py, tests/test_scan_rule.py, pytest.ini |
+| commit (D3) | models/isolation_forest.joblib, models/isolation_forest.features.json |
 | update | PROGRESS.md |
 
 ## Data

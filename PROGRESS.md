@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **Phase 1 — awaiting `phase 1 accepted`**
+Current phase: **Phase 1 (hardened) — awaiting `phase 1 accepted`**
 
 Phase 0 accepted ("documentation approved") on 2026-10-28.
 
@@ -226,3 +226,87 @@ None.
 - Port scan flows are not flagged by Isolation Forest (0/50).
 - Every Isolation Forest alert has confidence ≥ 0.99, so severity is always `high`.
 - The sample's benign traffic is synthetic and near-identical; it is not evidence of a low false-positive rate.
+
+---
+
+## Phase 1 — hardening pass
+
+Design: [weak-spot design](docs/superpowers/specs/2026-10-28-weak-spot-hardening-design.md) · Plan: [hardening plan](docs/superpowers/plans/2026-10-28-weak-spot-hardening.md)
+
+Method: superpowers brainstorming, informed by three read-only reviews (agent-skills code-reviewer, security-auditor, doubt-driven-development). Their claims that I re-ran: Ethernet padding counted as payload, loopback ping one-way, gzip auto-decompression in Scapy, `::ffff:127.0.0.1` treated as loopback — all confirmed. One claim not confirmed: a 0x96 byte in the Thursday WebAttacks CSV (none found; recheck in Phase 5).
+
+### Decisions (human, 2026-10-28/29)
+
+- D1 hardening pass now; later-phase fixes go into PHASES.md gates.
+- D2 cross-flow port-scan rule + Phase 5 Random Forest; the rule may name `PortScan`.
+- D3 models committed to git, compressed, sha256-checked.
+- D4 alert aggregation (`count`, `last_seen`) before the Phase 3 schema freeze.
+- D5 one timestamp-driven flow table for offline, upload and live (Phase 2).
+- D6 Isolation-Forest-only alerts are `low`/`medium`, never `high`.
+- Ponytail ultra trims approved (recorded in the design doc).
+
+### Tasks completed
+
+- [x] Task 1 — packet parsing: Ethernet padding, IPv6 transport detection, non-first fragments skipped, out-of-order timestamps, per-packet error handling, timestamp range check, pcap/pcapng magic check (gzip rejected) — `6378576`
+- [x] Task 2 — severity tiers (D6), compressed models with sha256 check — `f0827ad`
+- [x] Task 3 — Isolation Forest threshold taken from the confidence grid — `f2326db`
+- [x] Task 4 — `backend/detection/scan_rule.py` with bounded per-source state — `9fc4323`
+- [x] Task 5 — CLI: TCP/UDP-only scoring, IF + scan rule, `source`/`flow_key`; model retrained and committed — `820eb7a`
+- [x] Task 6 — docs: AGENTS, DATA_MODEL, API_SPEC, ARCHITECTURE, LIMITATIONS, EVALUATION, PRD, README, PHASES gates — `d1ba0b7`
+- [x] Task 7 — gate re-run, clean clone without CICIDS, PHASE1_RESULTS rewritten
+
+### Evidence — gate run
+
+```text
+$ .venv/bin/pytest -q
+29 passed in 10.43s
+
+$ .venv/bin/python backend/detect_offline.py --pcap tests/fixtures/sample.pcap --out data/phase1_detections.csv
+71 flows scored, 2 alerts (1 isolation_forest, 1 rule) -> data/phase1_detections.csv
+600 packets read
+
+$ cat data/phase1_detections.csv
+timestamp,src_ip,dst_ip,attack_type,score,severity,source,flow_key
+2023-11-14T22:14:10.190Z,127.0.0.1,127.0.0.1,PortScan,1.0,high,rule,TCP|127.0.0.1|55555|127.0.0.1|20
+2023-11-14T22:14:20.299Z,127.0.0.1,127.0.0.1,anomaly,0.991,low,isolation_forest,TCP|127.0.0.1|60000|127.0.0.1|80
+
+$ python -c "...sidecar..."
+{'feature_order': ['flow_duration_s', 'fwd_packets', 'bwd_packets', 'total_bytes', 'packets_per_s'], 'n_train_rows': 50000, 'rows_read': 529918, 'rows_dropped_invalid': 15, 'benign_rows': 529903, 'flag_quantile': 0.99, 'threshold': 0.6738411569235067, 'sha256': '72912080f27ae7bb67f2ab726099e60b12d7065c9d000a0abec5c88d5d46ed30', 'sklearn_version': '1.9.1'}
+
+$ ls -l models/
+-rw-rw-r-- 1 vighnesh vighnesh  24880 Oct 29 14:02 isolation_forest.features.json
+-rw-rw-r-- 1 vighnesh vighnesh 705848 Oct 29 14:02 isolation_forest.joblib
+
+$ grep -rliE "fastapi|react" backend/ tests/ || echo "no FastAPI/React code"
+no FastAPI/React code
+```
+
+### Evidence — clean clone without the dataset
+
+```text
+$ git clone (HEAD, no data/ — no CICIDS) && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+$ ls data/
+$ .venv/bin/pytest -q
+29 passed in 5.66s
+$ .venv/bin/python backend/detect_offline.py --pcap tests/fixtures/sample.pcap --out data/phase1_detections.csv
+71 flows scored, 2 alerts (1 isolation_forest, 1 rule) -> data/phase1_detections.csv
+600 packets read
+$ diff <clean>/data/phase1_detections.csv <workdir>/data/phase1_detections.csv && echo identical
+identical
+```
+
+(`ls data/` prints nothing: only `.gitkeep`, which `ls` hides.)
+
+### Gate verdict
+
+`python backend/detect_offline.py --pcap tests/fixtures/sample.pcap` yields 2 alerts: the port scan (rule) and the SYN flood (Isolation Forest); no benign session flagged; PHASE1_RESULTS.md matches the CSV; no FastAPI or React code; reproducible from a clean clone with no dataset.
+
+### Blockers
+
+None.
+
+### Still open (owned by later phases, see PHASES.md)
+
+- Real false-positive rate: Phase 2 (alerts/hour on loopback) and Phase 5 (per CICIDS2017 day).
+- Random-source-port floods are not detected per flow (documented).
+- Scan rule thresholds untuned and not benchmarkable on MachineLearningCSV (documented).
