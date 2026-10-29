@@ -16,7 +16,7 @@ def test_pipeline_end_to_end_with_fake_capture():
             prn(pkt)
 
     # A frozen clock never expires the 2023 sample flows mid-feed; stop() flushes them, so the result is deterministic.
-    pipeline = Pipeline("lo", sniff=fake_sniff, clock=lambda: 0.0)
+    pipeline = Pipeline("lo", sniff=fake_sniff, listen=lambda **_: None, clock=lambda: 0.0)
     pipeline.start()
     deadline = time.monotonic() + 10
     while pipeline.stats["packets"] < len(packets) and time.monotonic() < deadline:

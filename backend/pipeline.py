@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from scapy.arch.linux import L2ListenSocket
 from scapy.sendrecv import sniff as scapy_sniff
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `python backend/pipeline.py`
@@ -37,10 +38,10 @@ DEFAULT_MODEL = os.environ.get("SENTINEL_MODEL_PATH", train_baseline.DEFAULT_OUT
 
 class Pipeline:
     def __init__(self, iface, model_path=DEFAULT_MODEL, queue_size=QUEUE_SIZE, flow_queue_size=FLOW_QUEUE_SIZE,
-                 sniff=scapy_sniff, clock=time.time, on_alert=None):
+                 sniff=scapy_sniff, listen=L2ListenSocket, clock=time.time, on_alert=None):
         self.packets: queue.Queue = queue.Queue(maxsize=queue_size)
         self.flows: queue.Queue = queue.Queue(maxsize=flow_queue_size)
-        self.capture = CaptureThread(iface, self.packets, sniff)
+        self.capture = CaptureThread(iface, self.packets, sniff, listen)
         self.table = FlowTable()
         self.detectors = Detectors(model_path)
         self.clock = clock
@@ -114,6 +115,7 @@ def summary(pipeline: Pipeline, elapsed_s: float) -> dict:
         "elapsed_s": round(elapsed_s, 1),
         **pipeline.stats,
         "dropped_packets": pipeline.capture.dropped,
+        "kernel_dropped_packets": pipeline.capture.kernel_dropped(),
         "active_flows": len(pipeline.table),
         "evicted_flows": pipeline.table.evicted,
         "max_delay_s": round(pipeline.max_delay_s, 2),

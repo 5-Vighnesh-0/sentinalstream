@@ -1,5 +1,6 @@
 import logging
 import queue
+import struct
 import threading
 import time
 
@@ -28,7 +29,7 @@ def test_capture_thread_survives_overflow():
             kwargs["prn"](n)
             n += 1
 
-    capture = CaptureThread("lo", queue.Queue(maxsize=10), sniff=fake_sniff)
+    capture = CaptureThread("lo", queue.Queue(maxsize=10), sniff=fake_sniff, listen=lambda **kw: seen.update(kw))
     capture.start()
     deadline = time.monotonic() + 5
     while capture.dropped < 1000 and time.monotonic() < deadline:
@@ -38,3 +39,18 @@ def test_capture_thread_survives_overflow():
     stop.set()
     capture.join(timeout=2)
     assert (seen["iface"], seen["filter"], seen["store"]) == ("lo", BPF_FILTER, False)
+
+
+def test_kernel_drops_accumulate_across_reads():
+    class FakeSocket:  # PACKET_STATISTICS resets on every read, like the kernel's
+        def getsockopt(self, level, option, size):
+            return struct.pack("II", 10, 3)
+
+    capture = CaptureThread("lo", queue.Queue())
+    capture._sock = type("L2", (), {"ins": FakeSocket()})()
+    capture.kernel_dropped()
+    assert capture.kernel_dropped() == 6
+
+
+def test_kernel_drops_zero_before_capture_starts():
+    assert CaptureThread("lo", queue.Queue()).kernel_dropped() == 0
