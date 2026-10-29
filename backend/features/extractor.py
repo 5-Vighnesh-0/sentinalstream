@@ -1,12 +1,10 @@
 """Group packets into bidirectional 5-tuple flows and compute the shared features."""
-from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from scapy.layers.inet import ICMP, IP, TCP, UDP
 from scapy.layers.inet6 import IPv6, IPv6ExtHdrFragment
 from scapy.packet import Padding
-from scapy.utils import PcapReader
 
 from backend.features.feature_set import FEATURES, packets_per_s
 
@@ -80,6 +78,9 @@ class Flow:
     fwd_packets: int = 0
     bwd_packets: int = 0
     total_bytes: int = 0
+    fin_fwd: bool = False  # FIN/RST end flows in the flow table; they are not model features
+    fin_bwd: bool = False
+    rst: bool = False
 
     @classmethod
     def start(cls, p: PacketInfo) -> "Flow":
@@ -89,10 +90,14 @@ class Flow:
     def add(self, p: PacketInfo) -> None:
         self.first_ts = min(self.first_ts, p.ts)
         self.last_ts = max(self.last_ts, p.ts)
-        if (p.src_ip, p.src_port) == (self.src_ip, self.src_port):
+        forward = (p.src_ip, p.src_port) == (self.src_ip, self.src_port)
+        if forward:
             self.fwd_packets += 1
+            self.fin_fwd |= "F" in p.flags
         else:
             self.bwd_packets += 1
+            self.fin_bwd |= "F" in p.flags
+        self.rst |= "R" in p.flags
         self.total_bytes += p.payload_len
 
     @property
@@ -120,41 +125,3 @@ def check_capture_file(path) -> None:
     with open(path, "rb") as f:
         if f.read(4) not in CAPTURE_MAGICS:
             raise ValueError(f"{path}: not a pcap/pcapng file (gzip and other formats are rejected)")
-
-
-def flows_from_pcap(path) -> tuple[list[Flow], Counter]:
-    """Read a PCAP/PCAPNG and return (flows, stats): one Flow per bidirectional 5-tuple, in first-seen order.
-
-    shortcut: no idle/active timeout or flow cap offline, so a reused 5-tuple merges into one flow;
-    Phase 2's timestamp-driven flow table (D5) replaces this loop for offline, upload and live paths.
-    """
-    check_capture_file(path)
-    flows: dict[tuple, Flow] = {}
-    stats = Counter()
-    with PcapReader(str(path)) as reader:
-        packets = iter(reader)
-        while True:
-            try:
-                pkt = next(packets)
-            except StopIteration:
-                break
-            except Exception:  # truncated or corrupt file: keep what was read
-                stats["truncated"] += 1
-                break
-            stats["packets"] += 1
-            try:
-                if is_non_first_fragment(pkt):
-                    stats["skipped_fragments"] += 1
-                    continue
-                p = parse_packet(pkt)
-            except Exception:  # hostile input: one bad packet must not abort the file
-                stats["skipped_errors"] += 1
-                continue
-            if p is None:
-                stats["skipped_non_ip"] += 1
-                continue
-            key = canonical_key(p)
-            if key not in flows:
-                flows[key] = Flow.start(p)
-            flows[key].add(p)
-    return list(flows.values()), stats

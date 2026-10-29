@@ -1,6 +1,8 @@
 # Progress
 
-Current phase: **Phase 1 (hardened) — awaiting `phase 1 accepted`**
+Current phase: **Phase 2 — in progress**
+
+Phase 1 accepted ("phase 1 accepted") on 2026-10-29 and pushed.
 
 Phase 0 accepted ("documentation approved") on 2026-10-28.
 

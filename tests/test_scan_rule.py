@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from backend.detection.scan_rule import ScanDetector
-from backend.features.extractor import Flow, flows_from_pcap
+from backend.features.extractor import Flow
+from backend.features.flow_table import flows_from_pcap
 
 SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample.pcap"
 

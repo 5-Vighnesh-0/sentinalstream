@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backend.features.extractor import flows_from_pcap
+from backend.features.flow_table import flows_from_pcap
 from backend.features.feature_set import FEATURES, from_cicids, load_model, packets_per_s, save_model, severity
 
 SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample.pcap"

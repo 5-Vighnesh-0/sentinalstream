@@ -7,8 +7,9 @@ from scapy.layers.inet6 import IPv6, IPv6ExtHdrHopByHop
 from scapy.layers.l2 import Ether
 from scapy.packet import Raw
 
-from backend.features import extractor
-from backend.features.extractor import Flow, flows_from_pcap, is_non_first_fragment, parse_packet
+from backend.features import flow_table
+from backend.features.extractor import Flow, is_non_first_fragment, parse_packet
+from backend.features.flow_table import flows_from_pcap
 
 SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample.pcap"
 LO = "127.0.0.1"
@@ -51,7 +52,7 @@ def test_out_of_range_timestamp_rejected():
 
 
 def test_bad_packet_is_skipped_not_fatal(monkeypatch):
-    real = extractor.parse_packet
+    real = flow_table.parse_packet
     seen = []
 
     def first_fails(pkt):
@@ -60,7 +61,7 @@ def test_bad_packet_is_skipped_not_fatal(monkeypatch):
             raise ValueError("boom")
         return real(pkt)
 
-    monkeypatch.setattr(extractor, "parse_packet", first_fails)
+    monkeypatch.setattr(flow_table, "parse_packet", first_fails)
     flows, stats = flows_from_pcap(SAMPLE)
     assert (stats["packets"], stats["skipped_errors"], len(flows)) == (600, 1, 71)
 

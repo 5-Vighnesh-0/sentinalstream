@@ -14,7 +14,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `python backend/detect_offline.py`
 
 from backend.detection.scan_rule import ScanDetector  # noqa: E402
-from backend.features.extractor import flows_from_pcap  # noqa: E402
+from backend.features.flow_table import flows_from_pcap  # noqa: E402
 from backend.features.feature_set import FEATURES, load_model, severity  # noqa: E402
 from backend.ml import train_baseline  # noqa: E402
 
