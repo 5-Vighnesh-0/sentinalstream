@@ -15,13 +15,12 @@ SOL_PACKET, PACKET_STATISTICS = 263, 6  # linux/socket.h, linux/if_packet.h; not
 
 
 def listen_socket(iface: str, filter: str):
-    sock = L2ListenSocket(iface=iface, filter=filter)
     if iface == "lo":
-        # Loopback hands packet sockets every packet twice (outgoing, then incoming). With outs set,
-        # Scapy discards the PACKET_OUTGOING copy, as libpcap does on loopback. Real interfaces keep
-        # outgoing packets: those are the host's own traffic, seen once.
-        sock.outs = sock.ins
-    return sock
+        # Loopback hands packet sockets every packet twice (outgoing, then incoming). Keep only the
+        # incoming copy in the kernel filter, so duplicates never fill the socket buffer or the drop count.
+        # Real interfaces keep outgoing packets: those are the host's own traffic, seen once.
+        filter = f"inbound and {filter}"
+    return L2ListenSocket(iface=iface, filter=filter)
 
 
 class CaptureThread(threading.Thread):
