@@ -17,12 +17,11 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from scapy.arch.linux import L2ListenSocket
 from scapy.sendrecv import sniff as scapy_sniff
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `python backend/pipeline.py`
 
-from backend.capture.sniffer import QUEUE_SIZE, CaptureThread  # noqa: E402
+from backend.capture.sniffer import QUEUE_SIZE, CaptureThread, listen_socket  # noqa: E402
 from backend.detection.detectors import SCORED_PROTOCOLS, Detectors  # noqa: E402
 from backend.features.extractor import is_non_first_fragment, parse_packet  # noqa: E402
 from backend.features.flow_table import TICK_S, FlowTable  # noqa: E402
@@ -38,7 +37,7 @@ DEFAULT_MODEL = os.environ.get("SENTINEL_MODEL_PATH", train_baseline.DEFAULT_OUT
 
 class Pipeline:
     def __init__(self, iface, model_path=DEFAULT_MODEL, queue_size=QUEUE_SIZE, flow_queue_size=FLOW_QUEUE_SIZE,
-                 sniff=scapy_sniff, listen=L2ListenSocket, clock=time.time, on_alert=None):
+                 sniff=scapy_sniff, listen=listen_socket, clock=time.time, on_alert=None):
         self.packets: queue.Queue = queue.Queue(maxsize=queue_size)
         self.flows: queue.Queue = queue.Queue(maxsize=flow_queue_size)
         self.capture = CaptureThread(iface, self.packets, sniff, listen)

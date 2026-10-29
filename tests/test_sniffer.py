@@ -4,6 +4,7 @@ import struct
 import threading
 import time
 
+from backend.capture import sniffer
 from backend.capture.sniffer import BPF_FILTER, CaptureThread
 
 
@@ -54,3 +55,15 @@ def test_kernel_drops_accumulate_across_reads():
 
 def test_kernel_drops_zero_before_capture_starts():
     assert CaptureThread("lo", queue.Queue()).kernel_dropped() == 0
+
+
+def test_loopback_drops_outgoing_duplicate_other_ifaces_keep_it(monkeypatch):
+    class FakeListen:
+        def __init__(self, iface, filter):
+            self.iface, self.ins, self.outs = iface, object(), None
+
+    monkeypatch.setattr(sniffer, "L2ListenSocket", FakeListen)
+    lo = sniffer.listen_socket(iface="lo", filter=BPF_FILTER)
+    eth = sniffer.listen_socket(iface="eth0", filter=BPF_FILTER)
+    assert lo.outs is lo.ins  # Scapy then discards PACKET_OUTGOING copies
+    assert eth.outs is None

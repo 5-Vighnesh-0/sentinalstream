@@ -14,8 +14,18 @@ QUEUE_SIZE = 50_000
 SOL_PACKET, PACKET_STATISTICS = 263, 6  # linux/socket.h, linux/if_packet.h; not exported by Python's socket module
 
 
+def listen_socket(iface: str, filter: str):
+    sock = L2ListenSocket(iface=iface, filter=filter)
+    if iface == "lo":
+        # Loopback hands packet sockets every packet twice (outgoing, then incoming). With outs set,
+        # Scapy discards the PACKET_OUTGOING copy, as libpcap does on loopback. Real interfaces keep
+        # outgoing packets: those are the host's own traffic, seen once.
+        sock.outs = sock.ins
+    return sock
+
+
 class CaptureThread(threading.Thread):
-    def __init__(self, iface: str, packets: queue.Queue, sniff=scapy_sniff, listen=L2ListenSocket):
+    def __init__(self, iface: str, packets: queue.Queue, sniff=scapy_sniff, listen=listen_socket):
         super().__init__(name="capture", daemon=True)
         self.iface = iface
         self.packets = packets
