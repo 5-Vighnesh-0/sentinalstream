@@ -94,3 +94,25 @@ test("no socket while the url is null; protocols are offered", () => {
   rerender({ url: "ws://test" });
   expect(latest().protocols).toEqual(["sentinelstream", "t0k"]);
 });
+
+test("is idle while the url is null, then connecting", () => {
+  const { result, rerender } = renderHook(({ url }) => useWebSocket(url, { onMessage: () => {} }), {
+    initialProps: { url: null as string | null },
+  });
+  expect(result.current).toBe("idle");
+  rerender({ url: "ws://test" });
+  expect(result.current).toBe("connecting");
+  rerender({ url: null });
+  expect(result.current).toBe("idle");
+});
+
+test("onClose fires on each unexpected close but not after unmount", () => {
+  const onClose = vi.fn();
+  const { unmount } = renderHook(() => useWebSocket("ws://test", { onMessage: () => {}, onClose }));
+  act(() => latest().onclose?.());
+  expect(onClose).toHaveBeenCalledTimes(1);
+  const socket = latest();
+  unmount();
+  act(() => socket.onclose?.());
+  expect(onClose).toHaveBeenCalledTimes(1);
+});

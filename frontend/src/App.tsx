@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AlertFeed, { type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
@@ -53,6 +53,11 @@ export default function App() {
     loadAlerts(null); // catch up on anything missed while disconnected
   }, [loadAlerts]);
 
+  // A rejected WebSocket handshake never fires onopen, so check the token over REST on its own too.
+  useEffect(() => {
+    if (token && !rejected) loadAlerts(null);
+  }, [token, rejected, loadAlerts]);
+
   const onMessage = useCallback((message: { type: string; data: any }) => {
     if (message.type === "alert") {
       setAlerts((prev) => upsert(prev, [message.data]));
@@ -65,7 +70,7 @@ export default function App() {
     }
   }, []);
 
-  const status = useWebSocket(token && !rejected ? WS_URL : null, { onMessage, onOpen }, ["sentinelstream", token]);
+  const status = useWebSocket(token && !rejected ? WS_URL : null, { onMessage, onOpen, onClose: () => loadAlerts(null) }, ["sentinelstream", token]);
   const visible = alerts.filter((a) => a.batch_id === view);
 
   function saveNewToken(t: string) {
@@ -84,7 +89,7 @@ export default function App() {
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-semibold">SentinelStream</h1>
         <p className="text-sm text-muted">
-          {status === "open" ? "Connected" : status === "connecting" ? "Connecting…" : "Reconnecting…"}
+          {{ idle: "Waiting for the dashboard token", open: "Connected", connecting: "Connecting…", reconnecting: "Reconnecting…" }[status]}
           {iface && ` · capturing on ${iface}`}
         </p>
       </header>

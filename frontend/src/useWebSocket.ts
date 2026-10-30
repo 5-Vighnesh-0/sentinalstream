@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export type SocketStatus = "connecting" | "open" | "reconnecting";
+export type SocketStatus = "idle" | "connecting" | "open" | "reconnecting";
 
 const BACKOFF_START_MS = 1000;
 const BACKOFF_MAX_MS = 30_000;
@@ -9,16 +9,20 @@ export function nextDelay(attempt: number): number {
   return Math.min(BACKOFF_START_MS * 2 ** attempt, BACKOFF_MAX_MS);
 }
 
-type Handlers = { onMessage: (message: any) => void; onOpen?: () => void };
+type Handlers = { onMessage: (message: any) => void; onOpen?: () => void; onClose?: () => void };
 
 /** One WebSocket that reconnects with exponential backoff (1 s, 2 s, 4 s ... 30 s), reset after each good open. */
 export function useWebSocket(url: string | null, handlers: Handlers, protocols: string[] = []): SocketStatus {
-  const [status, setStatus] = useState<SocketStatus>("connecting");
+  const [status, setStatus] = useState<SocketStatus>(url === null ? "idle" : "connecting");
   const latest = useRef(handlers);
   latest.current = handlers; // callers may pass new closures each render without reconnecting
 
   useEffect(() => {
-    if (url === null) return;
+    if (url === null) {
+      setStatus("idle");
+      return;
+    }
+    setStatus("connecting");
     let socket: WebSocket | undefined;
     let timer: ReturnType<typeof setTimeout>;
     let attempt = 0;
@@ -42,6 +46,7 @@ export function useWebSocket(url: string | null, handlers: Handlers, protocols: 
       };
       socket.onclose = () => {
         if (stopped) return;
+        latest.current.onClose?.();
         setStatus("reconnecting");
         timer = setTimeout(connect, nextDelay(attempt++));
       };

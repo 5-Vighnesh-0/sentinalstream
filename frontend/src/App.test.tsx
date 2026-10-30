@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App, { upsert } from "./App";
 import type { AlertItem } from "./components/AlertFeed";
@@ -20,6 +20,7 @@ test("live alerts never evict an upload's alerts", () => {
 
 class FakeWS {
   static last: FakeWS;
+  static count = 0;
   protocols: string[];
   onopen?: () => void;
   onmessage?: (e: { data: string }) => void;
@@ -27,12 +28,14 @@ class FakeWS {
   constructor(_url: string, protocols: string[]) {
     this.protocols = protocols;
     FakeWS.last = this;
+    FakeWS.count++;
   }
   close() {}
 }
 
 beforeEach(() => {
   localStorage.clear();
+  FakeWS.count = 0;
   vi.stubGlobal("WebSocket", FakeWS);
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -53,10 +56,57 @@ test("sends the stored token to the WebSocket and the REST API", async () => {
   await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url).includes("/alerts") && init?.headers?.Authorization === "Bearer t0k")).toBe(true));
 });
 
-test("a 401 brings back the token form", async () => {
+test("a rejected token brings back the form even though the socket never opens", async () => {
   localStorage.setItem("sentinelstream.token", "old");
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 401, ok: false, json: async () => ({}) }));
   render(<App />);
-  act(() => FakeWS.last.onopen?.());
-  await waitFor(() => expect(screen.getByText(/rejected that token/)).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/rejected that token/));
+  expect(screen.getByText("Waiting for the dashboard token")).toBeTruthy();
+});
+
+test("each failed reconnect probes /alerts again", async () => {
+  localStorage.setItem("sentinelstream.token", "t0k");
+  const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<App />);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  act(() => FakeWS.last.onclose?.());
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+});
+
+test("without a token the header waits for one and no socket is opened", () => {
+  vi.stubGlobal("fetch", vi.fn());
+  render(<App />);
+  expect(screen.getByText("Waiting for the dashboard token")).toBeTruthy();
+  expect(screen.queryByText(/Lost the connection/)).toBeNull();
+  expect(FakeWS.count).toBe(0);
+});
+
+test("saving a valid token stores it and opens the socket with it", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Dashboard token"), { target: { value: " abc_DEF-123 " } });
+  fireEvent.click(screen.getByText("Save"));
+  expect(localStorage.getItem("sentinelstream.token")).toBe("abc_DEF-123");
+  expect(FakeWS.last.protocols).toEqual(["sentinelstream", "abc_DEF-123"]);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+});
+
+test("a malformed pasted token is not saved", () => {
+  vi.stubGlobal("fetch", vi.fn());
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Dashboard token"), { target: { value: "Bearer abc" } });
+  fireEvent.click(screen.getByText("Save"));
+  expect(screen.getByRole("alert").textContent).toBe("That doesn't look like a dashboard token.");
+  expect(localStorage.getItem("sentinelstream.token")).toBeNull();
+  expect(FakeWS.count).toBe(0);
+});
+
+test("a malformed stored token yields the form, not a crash", () => {
+  localStorage.setItem("sentinelstream.token", "bad token\n");
+  vi.stubGlobal("fetch", vi.fn());
+  render(<App />);
+  expect(screen.getByText("Paste the dashboard token")).toBeTruthy();
+  expect(FakeWS.count).toBe(0);
 });
