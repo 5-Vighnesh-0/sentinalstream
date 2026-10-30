@@ -5,13 +5,15 @@ import { nextDelay, useWebSocket } from "./useWebSocket";
 class FakeSocket {
   static instances: FakeSocket[] = [];
   url: string;
+  protocols?: string[];
   closedByClient = false;
   onopen?: () => void;
   onmessage?: (event: { data: string }) => void;
   onclose?: () => void;
 
-  constructor(url: string) {
+  constructor(url: string, protocols?: string[]) {
     this.url = url;
+    this.protocols = protocols;
     FakeSocket.instances.push(this);
   }
   close() {
@@ -82,4 +84,13 @@ test("unmount closes the socket and stops reconnecting", () => {
   act(() => vi.advanceTimersByTime(60_000));
   expect(socket.closedByClient).toBe(true);
   expect(FakeSocket.instances).toHaveLength(1);
+});
+
+test("no socket while the url is null; protocols are offered", () => {
+  const { rerender } = renderHook(({ url }) => useWebSocket(url, { onMessage: () => {} }, ["sentinelstream", "t0k"]), {
+    initialProps: { url: null as string | null },
+  });
+  expect(FakeSocket.instances).toHaveLength(0);
+  rerender({ url: "ws://test" });
+  expect(latest().protocols).toEqual(["sentinelstream", "t0k"]);
 });

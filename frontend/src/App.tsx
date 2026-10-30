@@ -3,8 +3,10 @@ import AlertFeed, { type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
 import PCAPUpload from "./components/PCAPUpload";
+import TokenForm from "./components/TokenForm";
 import TrafficChart, { type TrafficPoint } from "./components/TrafficChart";
 import { API_URL, TRAFFIC_WINDOW_S, WS_URL } from "./config";
+import { authHeader, loadToken, saveToken } from "./token";
 import { useWebSocket } from "./useWebSocket";
 
 const KEPT_ALERTS = 1000; // per view, in memory; the feed renders at most 200
@@ -27,17 +29,24 @@ export default function App() {
   const [iface, setIface] = useState<string | null>(null);
   const [modelLoaded, setModelLoaded] = useState<boolean | null>(null);
   const [batches, setBatches] = useState<Record<number, string>>({});
+  const [token, setToken] = useState(loadToken);
+  const [rejected, setRejected] = useState(false);
   const [view, setView] = useState<number | null>(null); // null = live traffic, else an upload batch id
 
   const loadAlerts = useCallback(async (batchId: number | null) => {
     const query = batchId === null ? "limit=200" : `limit=500&batch_id=${batchId}`;
     try {
-      const page = await (await fetch(`${API_URL}/alerts?${query}`)).json();
+      const response = await fetch(`${API_URL}/alerts?${query}`, { headers: authHeader(token) });
+      if (response.status === 401) {
+        setRejected(true);
+        return;
+      }
+      const page = await response.json();
       setAlerts((prev) => upsert(prev, page.items));
     } catch {
       // the connection banner already says the backend is unreachable
     }
-  }, []);
+  }, [token]);
 
   const onOpen = useCallback(() => {
     fetch(`${API_URL}/health`).then((r) => r.json()).then((h) => setModelLoaded(h.model_loaded)).catch(() => {});
@@ -56,8 +65,14 @@ export default function App() {
     }
   }, []);
 
-  const status = useWebSocket(WS_URL, { onMessage, onOpen });
+  const status = useWebSocket(token && !rejected ? WS_URL : null, { onMessage, onOpen }, ["sentinelstream", token]);
   const visible = alerts.filter((a) => a.batch_id === view);
+
+  function saveNewToken(t: string) {
+    saveToken(t);
+    setToken(t);
+    setRejected(false);
+  }
 
   function viewBatch(batchId: number | null) {
     setView(batchId);
@@ -77,6 +92,10 @@ export default function App() {
       {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-2">
+          {!token || rejected ? (
+            <TokenForm onSave={saveNewToken} rejected={rejected} />
+          ) : (
+            <>
           <label className="flex items-center gap-2 text-sm text-muted">
             View
             <select
@@ -91,6 +110,8 @@ export default function App() {
             </select>
           </label>
           <AlertFeed alerts={visible} captureTime={view !== null} />
+            </>
+          )}
         </div>
         <div className="space-y-4">
           <TrafficChart points={traffic} />
@@ -99,6 +120,8 @@ export default function App() {
             batches={batches}
             onUploaded={(id) => setBatches((prev) => ({ ...prev, [id]: prev[id] ?? "pending" }))}
             onView={viewBatch}
+            token={token}
+            onRejected={() => setRejected(true)}
           />
         </div>
       </div>

@@ -12,19 +12,20 @@ export function nextDelay(attempt: number): number {
 type Handlers = { onMessage: (message: any) => void; onOpen?: () => void };
 
 /** One WebSocket that reconnects with exponential backoff (1 s, 2 s, 4 s ... 30 s), reset after each good open. */
-export function useWebSocket(url: string, handlers: Handlers): SocketStatus {
+export function useWebSocket(url: string | null, handlers: Handlers, protocols: string[] = []): SocketStatus {
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const latest = useRef(handlers);
   latest.current = handlers; // callers may pass new closures each render without reconnecting
 
   useEffect(() => {
-    let socket: WebSocket;
+    if (url === null) return;
+    let socket: WebSocket | undefined;
     let timer: ReturnType<typeof setTimeout>;
     let attempt = 0;
     let stopped = false;
 
     const connect = () => {
-      socket = new WebSocket(url);
+      socket = new WebSocket(url, protocols);
       socket.onopen = () => {
         attempt = 0;
         setStatus("open");
@@ -50,9 +51,9 @@ export function useWebSocket(url: string, handlers: Handlers): SocketStatus {
     return () => {
       stopped = true;
       clearTimeout(timer);
-      socket.close();
+      socket?.close();
     };
-  }, [url]);
+  }, [url, protocols.join(",")]);
 
   return status;
 }
