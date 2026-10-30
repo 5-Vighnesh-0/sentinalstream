@@ -1,6 +1,5 @@
 """PCAP upload handling: untrusted files are parsed and scored in a separate, resource-limited process."""
 import ctypes
-import ctypes.util
 import multiprocessing as mp
 import queue
 import re
@@ -30,7 +29,7 @@ class _CapData(ctypes.Structure):
 
 def drop_capabilities() -> None:
     """Empty this process's capability sets (dropping needs no privilege): the parser must not keep CAP_NET_RAW."""
-    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    libc = ctypes.CDLL(None, use_errno=True)  # process symbols already include libc; find_library may spawn ldconfig/gcc
     if libc.prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), "prctl(PR_CAP_AMBIENT_CLEAR_ALL) failed")
     if libc.capset(ctypes.byref(_CapHeader(_CAP_VERSION_3, 0)), (_CapData * 2)()) != 0:

@@ -40,6 +40,7 @@ def wait_for(fn, timeout=30):
 def test_root_outside_a_container_is_warned(monkeypatch, tmp_path, caplog):
     monkeypatch.setenv("SENTINEL_DB_PATH", str(tmp_path / "t.db"))
     monkeypatch.setattr(main.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(main, "DOCKERENV", tmp_path / "absent")
     main.create_app(capture=False)
     assert "running as root" in caplog.text
 

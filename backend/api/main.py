@@ -36,6 +36,7 @@ UPLOAD_BACKLOG = 2  # waiting; one more is processing
 MESSAGE_QUEUE_SIZE = 1_000
 STATS_EVERY_S = 1.0
 WS_SEND_TIMEOUT_S = 2.0
+DOCKERENV = Path("/.dockerenv")
 
 
 class Alert(BaseModel):
@@ -170,7 +171,7 @@ class Hub:
 
 
 def create_app(capture: bool = True) -> FastAPI:
-    if os.geteuid() == 0 and not Path("/.dockerenv").exists():
+    if os.geteuid() == 0 and not DOCKERENV.exists():
         log.warning("running as root: start uvicorn with only CAP_NET_RAW instead (see docs/DEMO.md)")
     db_path = repo_path("SENTINEL_DB_PATH", "data/sentinelstream.db")
     model_path = resolve_model_path()
