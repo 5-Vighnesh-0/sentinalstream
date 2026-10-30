@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **Phase 2 — in progress**
+Current phase: **Phase 2 — awaiting `phase 2 accepted`**
 
 Phase 1 accepted ("phase 1 accepted") on 2026-10-29 and pushed.
 
@@ -312,3 +312,84 @@ None.
 - Real false-positive rate: Phase 2 (alerts/hour on loopback) and Phase 5 (per CICIDS2017 day).
 - Random-source-port floods are not detected per flow (documented).
 - Scan rule thresholds untuned and not benchmarkable on MachineLearningCSV (documented).
+
+---
+
+## Phase 2 — Live capture
+
+Plan: [plans/phase-2-PLAN.md](plans/phase-2-PLAN.md) · Results: [docs/PHASE2_RESULTS.md](docs/PHASE2_RESULTS.md)
+
+### Tasks completed
+
+- [x] `backend/features/flow_table.py` — timestamp-driven flow table (5 s idle, 10 s active, both FINs + 1 s grace, any RST, 100,000-flow cap); `flows_from_pcap` moved here so offline, upload and live share it (D5) — `e897bdc`
+- [x] `backend/detection/detectors.py` — Isolation Forest + scan rule shared by offline and live; `detect_offline.py` uses it
+- [x] `backend/capture/sniffer.py` — `CaptureThread` (daemon, `store=False`, BPF `not port 8000 and not port 3000`, drop-oldest with warning) — `843462e`
+- [x] `backend/pipeline.py` — capture → bounded packet queue → flow table (1 s tick) → bounded flow queue → batched inference → in-memory alerts; `--iface`, `--duration`, `--queue-size` — `843462e`
+- [x] Kernel drops counted via `PACKET_STATISTICS` — `b9a3abc` (human chose "count drops only", no bigger buffer)
+- [x] Loopback duplicate packets removed (bug found by the live gate) — `eda1ca1`, then in the kernel filter — `4356d62`
+- [x] Tests: flow expiry/cap, offline equivalence, queue overflow + warning + thread alive, kernel-drop accumulation, loopback dedup filter, pipeline end to end with a fake capture — 42 passed
+- [x] Live gate on `lo` with `sudo` (human-approved each run), docs/PHASE2_RESULTS.md, LIMITATIONS.md, API_SPEC.md (`kernel_dropped_packets`)
+
+### Evidence — gate 1 (curl loop, commit eda1ca1)
+
+```text
+2026-10-29 14:57:21,334 INFO capturing on lo with models/isolation_forest.joblib
+2026-10-29 14:58:21,383 INFO summary {"elapsed_s": 60.1, "packets": 19043, "flows_scored": 120, "flows_unscored": 0, "dropped_packets": 0, "kernel_dropped_packets": 0, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 2.02, "alerts": {"isolation_forest": 6}, "alerts_per_hour": {"isolation_forest": 359.7}}
+```
+
+### Evidence — gate 2 (overfilled queue, commit 4356d62, kernel BPF dedup)
+
+```text
+2026-10-29 20:36:38,148 INFO capturing on lo with models/isolation_forest.joblib
+2026-10-29 20:36:41,176 WARNING packet queue full: dropped 1 packets so far
+2026-10-29 20:37:08,203 INFO summary {"elapsed_s": 30.1, "packets": 5698, "flows_scored": 8, "flows_unscored": 1, "dropped_packets": 308, "kernel_dropped_packets": 39473, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 6.59, "alerts": {"isolation_forest": 3}, "alerts_per_hour": {"isolation_forest": 359.3}}
+```
+
+(The gate 2 run on `eda1ca1` reported 0 queue drops, 79,404 kernel drops and no warning: the duplicate copies overflowed the kernel buffer before reaching our queue. That result prompted the BPF fix.)
+
+### Evidence — 30-minute baseline (commit eda1ca1)
+
+```text
+2026-10-29 14:58:58,194 INFO capturing on lo with models/isolation_forest.joblib
+2026-10-29 20:18:41,186 INFO summary {"elapsed_s": 1800.0, "packets": 479305, "flows_scored": 1053, "flows_unscored": 10, "dropped_packets": 0, "kernel_dropped_packets": 1593, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 17385.24, "alerts": {"isolation_forest": 180, "rule": 1}, "alerts_per_hour": {"isolation_forest": 360.0, "rule": 2.0}}
+```
+
+Suspend/resume during the run (from `journalctl`): suspend 15:14:40, resume 20:04:24 local. Alert causes: 180 × `TCP|127.0.0.1|34812|127.0.0.1|43749` (KDE audio-visualizer widget, `ss -tnp` + `/proc/<pid>/cmdline`); 1 × `PortScan` from `UDP|127.0.0.53|53|…` 9 s after resume.
+
+### Evidence — runs with the loopback-duplicate bug (kept as evidence, not results)
+
+```text
+phase2_baseline.log: 2026-10-29 14:48:00,916 INFO summary {"elapsed_s": 1800.1, "packets": 170131, "flows_scored": 547, "flows_unscored": 4, "dropped_packets": 0, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 6.0, "alerts": {"isolation_forest": 96}, "alerts_per_hour": {"isolation_forest": 192.0}}
+phase2_gate1.log: 2026-10-29 14:17:22,870 INFO summary {"elapsed_s": 60.5, "packets": 2367, "flows_scored": 131, "flows_unscored": 0, "dropped_packets": 0, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 5.88, "alerts": {}, "alerts_per_hour": {}}
+phase2_gate2.log: 2026-10-29 14:17:57,017 INFO summary {"elapsed_s": 30.3, "packets": 822, "flows_scored": 7, "flows_unscored": 1, "dropped_packets": 17, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 5.62, "alerts": {}, "alerts_per_hour": {}}
+phase2_gate2b.log: 2026-10-29 14:54:15,709 INFO summary {"elapsed_s": 30.1, "packets": 11141, "flows_scored": 10, "flows_unscored": 1, "dropped_packets": 191, "kernel_dropped_packets": 79582, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 5.69, "alerts": {"isolation_forest": 3}, "alerts_per_hour": {"isolation_forest": 359.2}}
+```
+
+### Evidence — clean clone (no root)
+
+```text
+$ git clone (HEAD 4356d62, no data/) && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+$ .venv/bin/pytest -q
+42 passed in 7.63s
+$ .venv/bin/python backend/detect_offline.py --pcap tests/fixtures/sample.pcap --out data/check.csv
+71 flows scored, 2 alerts (1 isolation_forest, 1 rule) -> data/check.csv
+600 packets read; {'evicted_flows': 0}
+$ diff data/check.csv <workdir>/data/phase1_detections.csv && echo identical
+identical
+$ .venv/bin/python backend/pipeline.py --iface lo --duration 3   # no root
+PermissionError: [Errno 1] Operation not permitted
+capture thread stopped (capturing needs root or CAP_NET_RAW)
+```
+
+### Gate verdict
+
+On `lo`, a curl loop produced scored flows in near real time (max 2.02 s); an overfilled queue logged a warning and capture stayed alive; 30 minutes of normal use were recorded and alerts/hour per detector are in PHASE2_RESULTS.md (Isolation Forest 360/h, all from one benign app; scan rule 2/h, one post-resume artifact).
+
+### Blockers
+
+None.
+
+### Open (owned by later phases)
+
+- The audio-visualizer false positives: D4 aggregation (Phase 3) collapses them; whether a longer active timeout reduces the train/live mismatch can be measured in Phase 5.
+- Gate 1 and the baseline ran on `eda1ca1` (Python-side dedup); gate 2 on `4356d62` (kernel-side dedup). Both remove the same duplicates; only the kernel-drop count differs.

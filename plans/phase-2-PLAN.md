@@ -19,6 +19,7 @@
 | modify | backend/features/extractor.py, backend/detect_offline.py |
 | create | tests/test_flow_table.py, tests/test_sniffer.py, tests/test_pipeline.py |
 | create | docs/PHASE2_RESULTS.md |
+| added during gate | kernel-drop counting and loopback dedup in backend/capture/sniffer.py (bugs found by the live gate) |
 | update | PROGRESS.md |
 
 ## Acceptance gate (from docs/PHASES.md)

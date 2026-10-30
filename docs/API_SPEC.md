@@ -123,12 +123,13 @@ Sent every 1 second. Feeds the traffic chart and the Demo Mode banner (shown whe
     "dropped_alerts": 0,
     "active_flows": 17,
     "dropped_packets": 0,
+    "kernel_dropped_packets": 0,
     "iface": "lo"
   }
 }
 ```
 
-`dropped_packets` is the cumulative count since the backend started.
+`dropped_packets` (our queue) and `kernel_dropped_packets` (the capture socket) are cumulative since the backend started.
 
 ### `batch`
 
