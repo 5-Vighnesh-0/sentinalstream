@@ -19,6 +19,11 @@ def alert_row(flow, attack_type: str, confidence: float, source: str) -> dict:
         "severity": severity(confidence, named=source != "isolation_forest"),
         "source": source,
         "flow_key": flow.flow_key,
+        # Not in the offline CSV; used by the API's alert object and flows table.
+        "src_port": flow.src_port,
+        "dst_port": flow.dst_port,
+        "protocol": flow.protocol,
+        "features": flow.features(),
     }
 
 
