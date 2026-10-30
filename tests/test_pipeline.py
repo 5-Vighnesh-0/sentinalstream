@@ -1,4 +1,5 @@
 import time
+from collections import Counter
 from pathlib import Path
 
 from scapy.utils import rdpcap
@@ -25,7 +26,8 @@ def test_pipeline_end_to_end_with_fake_capture():
 
     assert pipeline.stats["packets"] == 600
     assert pipeline.stats["flows_scored"] == 71
-    assert sorted(a["source"] for a in pipeline.alerts) == ["isolation_forest", "rule"]
+    sources = Counter(a["source"] for a in pipeline.alerts)
+    assert sources == {"random_forest": 51, "rule": 1}  # same as backend/detect_offline.py on this file
 
 
 def test_full_flow_queue_counts_drops():

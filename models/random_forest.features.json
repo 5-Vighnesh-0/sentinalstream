@@ -1,0 +1,49 @@
+{
+  "model": "random_forest",
+  "feature_order": [
+    "flow_duration_s",
+    "fwd_packets",
+    "bwd_packets",
+    "total_bytes",
+    "packets_per_s"
+  ],
+  "sklearn_version": "1.9.1",
+  "created_at": "2026-10-30T02:02:57.355Z",
+  "sha256": "bb2cd31c1e40f45ef07622b5a1771fa1b429920c6f7ebcaa4db3e6d9346c7025",
+  "classes": [
+    "BENIGN",
+    "Bot",
+    "BruteForce",
+    "DDoS",
+    "DoS",
+    "PortScan",
+    "WebAttack"
+  ],
+  "params": {
+    "n_estimators": 50,
+    "max_depth": 16,
+    "min_samples_leaf": 5,
+    "class_weight": "balanced",
+    "random_state": 42
+  },
+  "n_train_rows": 1370885,
+  "trained_on": "CICIDS2017 MachineLearningCSV, all 8 files, training split",
+  "dataset": {
+    "rows_read": 2830743,
+    "rows_dropped_invalid": 115,
+    "duplicates_removed": 1116974,
+    "dropped_rare_classes": {
+      "Infiltration": 36,
+      "Heartbleed": 11
+    },
+    "class_rows": {
+      "BENIGN": 1387351,
+      "DoS": 186640,
+      "DDoS": 127188,
+      "BruteForce": 7402,
+      "WebAttack": 2089,
+      "PortScan": 1612,
+      "Bot": 1325
+    }
+  }
+}

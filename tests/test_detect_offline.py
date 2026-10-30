@@ -15,15 +15,27 @@ SAMPLE = REPO / "tests" / "fixtures" / "sample.pcap"
 FLOOD = "TCP|127.0.0.1|60000|127.0.0.1|80"
 
 
-def run_cli(pcap, out):
+def run_cli(pcap, out, *extra):
     return subprocess.run(
-        [sys.executable, "backend/detect_offline.py", "--pcap", str(pcap), "--out", str(out)],
+        [sys.executable, "backend/detect_offline.py", "--pcap", str(pcap), "--out", str(out), *extra],
         cwd=REPO, capture_output=True, text=True,
     )
 
 
-def test_cli_with_committed_model(tmp_path):
+def test_cli_with_committed_models(tmp_path):
     result = run_cli(SAMPLE, tmp_path / "out.csv")
+    assert result.returncode == 0, result.stderr
+    df = pd.read_csv(tmp_path / "out.csv")
+    assert list(df.columns) == COLUMNS
+    rf, rule = df[df["source"] == "random_forest"], df[df["source"] == "rule"]
+    assert rf.loc[rf["flow_key"] == FLOOD, "attack_type"].tolist() == ["DoS"]
+    assert rule["attack_type"].tolist() == ["PortScan"]
+    assert not df["flow_key"].str.contains("|8080", regex=False).any()  # no benign session flagged
+    assert "71 flows scored, 52 alerts (51 random_forest, 0 isolation_forest, 1 rule)" in result.stdout
+
+
+def test_cli_with_isolation_forest_only(tmp_path):
+    result = run_cli(SAMPLE, tmp_path / "out.csv", "--model", "models/isolation_forest.joblib")
     assert result.returncode == 0, result.stderr
     df = pd.read_csv(tmp_path / "out.csv")
     assert list(df.columns) == COLUMNS
@@ -34,7 +46,7 @@ def test_cli_with_committed_model(tmp_path):
     assert rule["attack_type"].tolist() == ["PortScan"]
     assert rule["flow_key"].str.contains("|55555|", regex=False).all()
     assert not df["flow_key"].str.contains("|8080", regex=False).any()  # no benign session flagged
-    assert "71 flows scored, 2 alerts (1 isolation_forest, 1 rule)" in result.stdout
+    assert "71 flows scored, 2 alerts (0 random_forest, 1 isolation_forest, 1 rule)" in result.stdout
 
 
 def test_cli_rejects_non_capture_file(tmp_path):

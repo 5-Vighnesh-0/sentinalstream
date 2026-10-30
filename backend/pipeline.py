@@ -25,14 +25,12 @@ from backend.capture.sniffer import QUEUE_SIZE, CaptureThread, listen_socket  # 
 from backend.detection.detectors import SCORED_PROTOCOLS, Detectors  # noqa: E402
 from backend.features.extractor import is_non_first_fragment, parse_packet  # noqa: E402
 from backend.features.flow_table import TICK_S, FlowTable  # noqa: E402
-from backend.ml import train_baseline  # noqa: E402
 
 log = logging.getLogger("sentinelstream.pipeline")
 
 FLOW_QUEUE_SIZE = 1_000  # batches, one per tick
 STATS_EVERY_S = 10
-# Until Phase 5 trains the Random Forest, the live default is the Isolation Forest.
-DEFAULT_MODEL = os.environ.get("SENTINEL_MODEL_PATH", train_baseline.DEFAULT_OUT)
+DEFAULT_MODEL = os.environ.get("SENTINEL_MODEL_PATH", "models/random_forest.joblib")
 
 
 class Pipeline:

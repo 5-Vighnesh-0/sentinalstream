@@ -95,8 +95,10 @@ def test_upload_is_analysed_into_its_own_batch(client):
     assert response.status_code == 202
     batch_id = response.json()["batch_id"]
     alerts = wait_for(lambda: (items := client.get("/alerts", params={"batch_id": batch_id}).json()["items"])
-                      and len(items) == 2 and items)
-    assert sorted(a["source"] for a in alerts) == ["isolation_forest", "rule"]
+                      and len(items) == 3 and items)
+    # The 50 probes the Random Forest labels WebAttack share src/dst/type, so they merge into one alert (D4).
+    assert sorted((a["source"], a["attack_type"], a["count"]) for a in alerts) == [
+        ("random_forest", "DoS", 1), ("random_forest", "WebAttack", 50), ("rule", "PortScan", 1)]
     assert list(uploads.UPLOAD_DIR.iterdir()) == []  # temp file removed
 
 
