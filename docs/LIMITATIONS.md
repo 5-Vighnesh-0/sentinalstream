@@ -30,6 +30,11 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 
 ## Dataset limits
 
+- On the 5 shared features, 39% of CICIDS2017 rows are exact duplicates; PortScan collapses from 158,930 to 1,612 distinct rows, and 4,382 rows share their features with a row of another label (no model can separate them).
+- The Random Forest's small classes have high recall but low precision on the test split (WebAttack 0.12, Bot 0.48, PortScan 0.65): `class_weight="balanced"` pulls benign flows into them. On the Phase 1 sample the Random Forest labels the 50 scan probes `WebAttack` at low confidence; the scan rule names them correctly.
+- With PortScan held out of training, Random Forest recall on PortScan drops from 0.99 to 0.22 and the Isolation Forest finds none: neither model generalises to an attack family it has not seen.
+- Infiltration (36 rows) and Heartbleed (11) are dropped (< 100 rows); SentinelStream cannot name them.
+
 - CICIDS2017 was recorded in 2017 in a lab network; traffic mix and attack tools are dated.
 - Classes are heavily imbalanced (some classes have tens of rows); per-class metrics for rare classes are unreliable.
 - A random train/test split leaks session-level similarity, so scores are optimistic.

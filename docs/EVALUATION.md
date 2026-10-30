@@ -1,6 +1,6 @@
 # Evaluation
 
-No results yet. Every number in this file and in README.md must come from `backend/evaluation/benchmark.py` (Phase 5). Until then the table below is a template.
+Every number in this file and in README.md comes from `backend/evaluation/benchmark.py`; full output, including the per-class table, per-day Isolation Forest false-positive rates and the held-out-family run, is in [benchmark/results.md](benchmark/results.md).
 
 ## Datasets
 
@@ -50,17 +50,21 @@ Also reported for every detector: PR-AUC, and recall at 1% false-positive rate (
 
 Random Forest also gets a per-class precision/recall/F1 table with support (test rows per class); classes with < 100 rows are merged or dropped. It (multi-class), since it is the only detector that names attacks.
 
-## Results table (template)
+## Results
 
-Command: `python backend/evaluation/benchmark.py` (Phase 5). Outputs a Markdown table and a CSV.
+Command: `python backend/evaluation/benchmark.py --csv-dir data/raw/cicids2017/MachineLearningCVE` (commit `8922a81`, AMD Ryzen 9 5900HS). Test split: 277,471 benign + 65,251 attack flows.
 
 | Detector | Precision | Recall | F1 | FPR (benign) | PR-AUC | Recall @1% FPR | Latency p50 (ms) | Latency p95 (ms) |
 |---|---|---|---|---|---|---|---|---|
-| PPS rule | — | — | — | — | — | — | — | — |
-| Isolation Forest | — | — | — | — | — | — | — | — |
-| Random Forest | — | — | — | — | — | — | — | — |
+| PPS rule | 0.0575 | 0.0026 | 0.0050 | 0.9990% | 0.1208 | 0.0026 | 0.022 | 0.030 |
+| Isolation Forest | 0.0103 | 0.0005 | 0.0009 | 1.0347% | 0.3943 | 0.0004 | 15.088 | 16.126 |
+| Random Forest | 0.9245 | 0.9973 | 0.9595 | 1.9166% | 0.9922 | 0.9192 | 4.034 | 4.352 |
 
-Test rows: — benign, — attack. Hardware: —. Commit: —.
+Random Forest per class (precision / recall / support): BENIGN 0.9994 / 0.9808 / 277,471; DoS 0.9573 / 0.9943 / 37,328; DDoS 0.9942 / 0.9990 / 25,438; BruteForce 0.9025 / 0.9824 / 1,480; PortScan 0.6514 / 0.9689 / 322; Bot 0.4761 / 0.9774 / 265; WebAttack 0.1174 / 0.9641 / 418. High recall with low precision on the small classes comes from `class_weight="balanced"`: benign flows are pulled into them.
+
+Held-out family (PortScan removed from training): Random Forest recall on PortScan falls from 0.9938 to 0.2205; Isolation Forest 0.0000; PPS rule 0.1149.
+
+Isolation Forest benign false-positive rate per CICIDS2017 file: 0.83%–1.31% (threshold is p99 of training benign scores).
 
 ## Not benchmarked
 
@@ -68,7 +72,7 @@ The port-scan rule needs source IPs and timestamps, which MachineLearningCSV doe
 
 ## Live default
 
-To be decided in Phase 5 from the table above, and stated here and in README.md with the reason.
+**Live default: Random Forest + port-scan rule + Isolation Forest** (human decision, Phase 5). Per flow, the Random Forest names the attack; only when it says benign can the Isolation Forest raise a `low`/`medium` `anomaly`; the scan rule works across flows. Why: the Random Forest carries detection on known attacks (F1 0.9595, PR-AUC 0.9922, ~4 ms per flow). The Isolation Forest adds almost nothing on CICIDS2017 attacks (recall 0.0005; 0.0000 on held-out PortScan) and caused every live false positive measured in Phase 2, but it is kept as the only net for patterns no training label covers, with its alerts capped at `medium` and merged by D4. The scan rule is the only detector that names a port scan reliably on live traffic.
 
 ## Caveats to report with results
 

@@ -82,7 +82,7 @@ The `ml/` top-level directory is reserved for notebooks/exploration notes; all i
 
 ## Detection logic
 
-- **Random Forest** (supervised, Phase 5): flags a flow when the predicted class is not `BENIGN`. `attack_type` = predicted class, `confidence` = predicted class probability.
+- **Random Forest** (supervised, Phase 5; 50 trees, depth 16, `class_weight="balanced"`, trained on the CICIDS2017 training split): flags a flow when the predicted class is not `BENIGN`. `attack_type` = predicted class, `confidence` = predicted class probability.
 - **Isolation Forest** (unsupervised, Phase 1): runs on `log1p` of the features; flags a flow when its anomaly score exceeds the 99th percentile of benign training scores (`threshold` in the sidecar). It cannot name an attack, so `attack_type = "anomaly"`. `confidence` = percentile of the flow's anomaly score among the benign training scores, so every Isolation Forest alert has confidence ≥ 0.99.
 - **Port-scan rule** (Phase 1, D2): ≥ 20 distinct (dst_ip, dst_port) from one source within 10 s → one `PortScan` alert per source per 10 s, `source="rule"`, confidence 1.0.
 - **Combination:** Random Forest label first, then the scan rule, then Isolation Forest `"anomaly"`. Only TCP/UDP flows are scored. Every alert records its `source`.
@@ -109,7 +109,7 @@ Trusted: the host OS, the Python process, files under the repo root.
 | Env var | Default | Used by |
 |---|---|---|
 | `SENTINEL_IFACE` | `lo` | Capture thread (overridden by `--iface`) |
-| `SENTINEL_MODEL_PATH` | `models/random_forest.joblib` | Inference (supervised model). Until Phase 5 creates it, the pipeline runs Isolation Forest only (`models/isolation_forest.joblib`). |
+| `SENTINEL_MODEL_PATH` | `models/random_forest.joblib` | Inference: the Random Forest; the committed `models/isolation_forest.joblib` is always loaded alongside it. Pointing it at the Isolation Forest runs without the Random Forest. Must resolve under `models/`. |
 | `SENTINEL_DB_PATH` | `data/sentinelstream.db` | Writer and API reads |
 
 Ports: frontend 3000 (set explicitly in `vite.config` and the Nginx config), backend 8000.
