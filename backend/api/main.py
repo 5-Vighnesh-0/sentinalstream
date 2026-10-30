@@ -8,18 +8,20 @@ import logging
 import os
 import queue
 import sqlite3
+import sys
 import threading
 import uuid
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 
 from backend.api import uploads
+from backend.api.auth import SUBPROTOCOL, TOKEN_FILE, from_bearer, from_subprotocols, load_or_create_token, matches
 from backend.api.uploads import analyse_upload, reset_upload_dir, sanitise_filename
 from backend.db.writer import ALERT_FIELDS, AlertAggregator, Writer, connect, now_iso
 from backend.features.extractor import check_capture_file
@@ -37,6 +39,7 @@ MESSAGE_QUEUE_SIZE = 1_000
 STATS_EVERY_S = 1.0
 WS_SEND_TIMEOUT_S = 2.0
 DOCKERENV = Path("/.dockerenv")
+MAX_WS_CLIENTS = 20
 
 
 class Alert(BaseModel):
@@ -171,14 +174,24 @@ class Hub:
 
 
 def create_app(capture: bool = True) -> FastAPI:
+    os.umask(0o077)  # data/, the database and the token file are owner-only
     if os.geteuid() == 0 and not DOCKERENV.exists():
         log.warning("running as root: start uvicorn with only CAP_NET_RAW instead (see docs/DEMO.md)")
     db_path = repo_path("SENTINEL_DB_PATH", "data/sentinelstream.db")
+    token = load_or_create_token(db_path.parent)
+    # stderr, not logging: uvicorn's default config would hide an INFO line from this logger.
+    print(f"Dashboard token: {token} (stored in {db_path.parent / TOKEN_FILE}; delete the file to rotate it)",
+          file=sys.stderr, flush=True)
     model_path = resolve_model_path()
     iface = os.environ.get("SENTINEL_IFACE", "lo")
     hub = Hub(db_path)
     uploads_queue: queue.Queue = queue.Queue(maxsize=UPLOAD_BACKLOG)
     upload_lock = threading.Lock()
+
+    def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
+        if not matches(token, from_bearer(authorization)):
+            raise HTTPException(401, "Missing or wrong dashboard token")
+
     try:
         load_model(model_path)
         model_loaded = True
@@ -231,9 +244,10 @@ def create_app(capture: bool = True) -> FastAPI:
 
     app = FastAPI(title="SentinelStream", lifespan=lifespan)
     app.state.hub = hub
+    app.state.token = token
     app.state.uploads = uploads_queue
     app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"],
-                       allow_headers=["X-Sentinel-Upload"])
+                       allow_headers=["X-Sentinel-Upload", "Authorization"])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # blocks DNS rebinding
     app.add_middleware(UploadSizeLimit, limit=uploads.MAX_UPLOAD_BYTES)
 
@@ -241,7 +255,7 @@ def create_app(capture: bool = True) -> FastAPI:
     def health() -> Health:
         return Health(status="ok", model_loaded=model_loaded)
 
-    @app.get("/alerts")
+    @app.get("/alerts", dependencies=[Depends(require_token)])
     def list_alerts(
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
@@ -260,7 +274,7 @@ def create_app(capture: bool = True) -> FastAPI:
                                 "ORDER BY timestamp DESC LIMIT ? OFFSET ?", [*params, limit, offset]).fetchall()
         return AlertPage(items=[Alert(**dict(r)) for r in rows], total=total, limit=limit, offset=offset)
 
-    @app.post("/upload-pcap", status_code=202)
+    @app.post("/upload-pcap", status_code=202, dependencies=[Depends(require_token)])
     def upload_pcap(
         file: UploadFile,
         request: Request,
@@ -303,10 +317,15 @@ def create_app(capture: bool = True) -> FastAPI:
 
     @app.websocket("/ws/alerts")
     async def ws_alerts(websocket: WebSocket) -> None:
-        if websocket.headers.get("origin") not in ALLOWED_ORIGINS:  # CORS doesn't cover WebSockets
+        offered = from_subprotocols(websocket.headers.get("sec-websocket-protocol"))
+        # CORS doesn't cover WebSockets, and browsers can only send the token as a subprotocol.
+        if websocket.headers.get("origin") not in ALLOWED_ORIGINS or not matches(token, offered):
             await websocket.close(code=1008)
             return
-        await websocket.accept()
+        if len(hub.clients) >= MAX_WS_CLIENTS:
+            await websocket.close(code=1013)
+            return
+        await websocket.accept(subprotocol=SUBPROTOCOL)
         hub.clients.add(websocket)
         try:
             while True:
