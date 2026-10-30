@@ -69,3 +69,21 @@ def test_udp_flood_uses_one_fixed_5_tuple(monkeypatch):
     monkeypatch.setattr(sim.socket, "socket", FakeSocket)
     sim.main(["udp_flood", "--count", "3"])
     assert calls == [("bind", ("127.0.0.1", sim.UDP_SPORT))] + [("sendto", ("127.0.0.1", sim.UDP_DPORT))] * 3
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+@pytest.mark.parametrize("mode", ["portscan", "udp_flood", "syn_flood"])
+def test_every_simulator_mode_raises_an_alert(mode):
+    """Real recordings of each mode on lo (tests/fixtures/record_simulator_pcaps.py): the demo works without root."""
+    from backend.detection.detectors import Detectors
+    from backend.features.flow_table import flows_from_pcap
+
+    flows, _ = flows_from_pcap(FIXTURES / f"sim_{mode}.pcap")
+    alerts = {(r["source"], r["attack_type"]) for r in Detectors(FIXTURES.parents[1] / "models" / "random_forest.joblib").score(flows)}
+    assert alerts
+    if mode == "portscan":
+        assert ("rule", "PortScan") in alerts  # the one correct, high-severity name on loopback
+    if mode == "udp_flood":
+        assert ("isolation_forest", "anomaly") in alerts

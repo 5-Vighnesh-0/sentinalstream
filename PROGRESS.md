@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **Phase 6 — in progress**
+Current phase: **Phase 6 — awaiting `phase 6 accepted`**
 
 Phase 5 accepted ("Accept Phase 5") on 2026-10-29 and pushed.
 
@@ -679,3 +679,74 @@ None.
 
 - The benchmark needs the dataset (registration-form download); CI cannot run it. CI runs everything else on the committed models.
 - Live behaviour of the Random Forest on loopback traffic has not been gate-measured (Phase 2's baseline predates it); Phase 6's demo runs exercise it.
+
+---
+
+## Phase 6 — Simulator and demo
+
+Plan: deliverables and decisions below (human decisions 2026-10-29: `docker-compose.demo.yml` moves to Phase 7 with the Dockerfiles; floods default to the hard cap).
+
+### Tasks completed
+
+- [x] Offline check of each mode's shape against the live detectors before building (synthetic, no packets sent): at the spec default (200 @ 10 ms) udp_flood raised nothing and syn_flood was always labelled WebAttack (kernel RSTs split it into tiny flows); faster floods raise an Isolation Forest anomaly
+- [x] `simulator/simulate_attack.py` — portscan (TCP connect, no root), udp_flood (fixed 5-tuple, no root), syn_flood (Scapy L3RawSocket, root); hard caps 1,000 packets and 1 ms; target must be an IPv4 literal in 127.0.0.0/8, re-checked before every packet; `--dry-run`
+- [x] `tests/fixtures/record_simulator_pcaps.py` + recorded `tests/fixtures/sim_{portscan,udp_flood,syn_flood}.pcap` (each filtered to its own ports; files are root-owned because the recorder ran under sudo)
+- [x] `docs/DEMO.md` (5-minute local walkthrough), corrected after the gate to the alerts that really appear
+- [x] Tests: target guard (hostnames, IPv6, `::ffff:`, octal, integer forms refused), caps, defaults, dry run, fixed 5-tuple, ≥ 1 alert per recorded mode — 86 passed (also from another working directory)
+- [x] Found during the phase: default model paths in `pipeline.py` and `detect_offline.py` were relative to the working directory; now resolved against the repo
+
+### Evidence — gate: recording, then docs/DEMO.md steps 1–3 in a fresh clone
+
+```text
+== record simulator fixtures (in the repo)
+sending 200 portscan packets to 127.0.0.1, one every 0.01 s (~2.0 s)
+done
+sending 1000 udp_flood packets to 127.0.0.1, one every 0.001 s (~1.0 s)
+done
+sending 1000 syn_flood packets to 127.0.0.1, one every 0.001 s (~1.0 s)
+done
+portscan: 400 packets -> /home/vighnesh/Desktop/projects/sentinelstream/tests/fixtures/sim_portscan.pcap
+udp_flood: 3000 packets -> /home/vighnesh/Desktop/projects/sentinelstream/tests/fixtures/sim_udp_flood.pcap
+syn_flood: 2000 packets -> /home/vighnesh/Desktop/projects/sentinelstream/tests/fixtures/sim_syn_flood.pcap
+== fresh clone: follow docs/DEMO.md
+-- 1. install
+-- 2. backend
+-- 3. dashboard
+READY: open http://localhost:3000 (servers stop by themselves after 10 minutes)
+```
+
+Fresh clone → backend and dashboard up: **30 s** (pip and npm used this machine's caches; a machine without them downloads more). This machine's `date` (Rust coreutils) ignores the width in `%3N`, so the script's own subtraction was wrong; times above are taken from the first 10 digits (seconds).
+
+### Evidence — DEMO.md step 4 from the fresh clone, observed in the built-in browser
+
+```text
+dashboard before the scan: "Connected · capturing on lo", demo-mode banner, 0 rows
+scan_start  1793327592.696 s
+first PortScan row in the DOM 1793327593.073 s   -> 377 ms
+rows: "Medium 10:33:14 PM WebAttack Classifier 127.0.0.1:58276 → 127.0.0.1:1 ×139 80%"
+      "Low 10:33:14 PM BruteForce Classifier 127.0.0.1:36350 → 127.0.0.1:4 ×61 55%"
+      "High 10:33:12 PM PortScan Port-scan rule 127.0.0.1:35590 → 127.0.0.1:20 100%"
+```
+
+From the first install command to the alert on screen: 57 s (30 s setup + 27 s, including the time taken to open the page).
+
+### Evidence — what each recorded mode raises (no root)
+
+```text
+portscan  400 packets, 200 flows: rule PortScan high ×1; RF WebAttack low ×104 / medium ×22; RF BruteForce low ×74
+udp_flood 3000 packets, 2 flows:  Isolation Forest anomaly low ×1
+syn_flood 2000 packets, 1000 flows: RF WebAttack low ×578 / medium ×241; RF BruteForce low ×167 / high ×12
+```
+
+### Gate verdict
+
+Following docs/DEMO.md in a fresh clone showed a High PortScan alert in the dashboard 57 s after the first install command, with no code edits.
+
+### Blockers
+
+None.
+
+### Known gaps (in LIMITATIONS.md)
+
+- Only the port scan gets a correct name on loopback; syn_flood is mislabelled WebAttack/BruteForce (some High), udp_flood is an unnamed anomaly.
+- The demo is Linux-only and needs sudo for capture.

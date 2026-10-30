@@ -30,7 +30,7 @@ log = logging.getLogger("sentinelstream.pipeline")
 
 FLOW_QUEUE_SIZE = 1_000  # batches, one per tick
 STATS_EVERY_S = 10
-DEFAULT_MODEL = os.environ.get("SENTINEL_MODEL_PATH", "models/random_forest.joblib")
+DEFAULT_MODEL = os.environ.get("SENTINEL_MODEL_PATH", str(Path(__file__).resolve().parents[1] / "models" / "random_forest.joblib"))
 
 
 class Pipeline:

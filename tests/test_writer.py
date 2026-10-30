@@ -1,3 +1,4 @@
+from pathlib import Path
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -6,7 +7,7 @@ from backend.detection.detectors import Detectors
 from backend.features.extractor import Flow
 
 T0 = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
-MODEL = "models/isolation_forest.joblib"
+MODEL = Path(__file__).resolve().parents[1] / "models" / "isolation_forest.joblib"
 
 
 def row(seconds, attack_type="anomaly", score=0.991, severity="low", src="10.0.0.9"):

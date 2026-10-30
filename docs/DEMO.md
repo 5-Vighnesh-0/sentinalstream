@@ -49,11 +49,11 @@ It connects to ports 1–200 on 127.0.0.1, one every 10 ms (about 2 seconds), wi
 
 Within about 2 seconds a **High · PortScan · Port-scan rule** alert appears at the top of the feed, from `127.0.0.1:<port>` to `127.0.0.1:20` (the 20th port probed is where the rule fires). The **Attack types** chart counts it.
 
-You may also see **Low · WebAttack · Classifier** alerts for the same scan, merged into one row with a repeat count: the Random Forest mislabels single probe flows as WebAttack (see [LIMITATIONS.md](LIMITATIONS.md)). The port-scan rule is the detection to trust here.
+You will also see **Classifier** alerts for the same probes, such as **Medium · WebAttack** and **Low · BruteForce**, each merged into one row with a repeat count. The Random Forest mislabels single probe flows (see [LIMITATIONS.md](LIMITATIONS.md)); the port-scan rule is the detection to trust here.
 
 ## Optional
 
-- **Floods:** `.venv/bin/python simulator/simulate_attack.py udp_flood` (no root) usually raises a **Low · anomaly** alert. `sudo .venv/bin/python simulator/simulate_attack.py syn_flood` raises **Low · WebAttack** alerts: on loopback the kernel answers each SYN with a reset, which splits the flood into tiny flows the classifier mislabels. Both are documented limitations, not bugs in the demo.
+- **Floods:** `.venv/bin/python simulator/simulate_attack.py udp_flood` (no root) raises a **Low · anomaly** alert. `sudo .venv/bin/python simulator/simulate_attack.py syn_flood` raises **WebAttack** and **BruteForce** classifier alerts, some of them High: on loopback the kernel answers each SYN with a reset, which splits the flood into tiny flows the classifier mislabels. Both are documented limitations, not bugs in the demo.
 - **Analyse a capture file:** in the dashboard's "Analyse a capture file" panel, upload `tests/fixtures/sample.pcap`, then pick **Upload 1** in the View menu.
 - **Dry run:** add `--dry-run` to any simulator command to see what it would send.
 

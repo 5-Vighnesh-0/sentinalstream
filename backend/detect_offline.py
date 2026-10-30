@@ -28,7 +28,8 @@ def detect(pcap, model_path):
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--pcap", required=True)
-    parser.add_argument("--model", default="models/random_forest.joblib", help="Random Forest (or an Isolation Forest alone)")
+    parser.add_argument("--model", default=str(Path(__file__).resolve().parents[1] / "models" / "random_forest.joblib"),
+                        help="Random Forest (or an Isolation Forest alone)")
     parser.add_argument("--out", default="data/detections.csv")
     args = parser.parse_args(argv)
 

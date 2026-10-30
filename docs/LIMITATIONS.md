@@ -34,6 +34,7 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 - The Random Forest's small classes have high recall but low precision on the test split (WebAttack 0.12, Bot 0.48, PortScan 0.65): `class_weight="balanced"` pulls benign flows into them. On the Phase 1 sample the Random Forest labels the 50 scan probes `WebAttack` at low confidence; the scan rule names them correctly.
 - With PortScan held out of training, Random Forest recall on PortScan drops from 0.99 to 0.22 and the Isolation Forest finds none: neither model generalises to an attack family it has not seen.
 - Infiltration (36 rows) and Heartbleed (11) are dropped (< 100 rows); SentinelStream cannot name them.
+- Simulator modes on loopback (Phase 6 recordings in `tests/fixtures/sim_*.pcap`): portscan → `PortScan` from the scan rule (high), plus Random Forest `WebAttack`/`BruteForce` on the individual probes; udp_flood → one Isolation Forest `anomaly` (low); syn_flood → only Random Forest `WebAttack`/`BruteForce`, some at high severity, because the kernel's RST replies split the flood into SYN+RST pairs that look like CICIDS2017's small-flow attack classes. No mode is named `DoS` on loopback.
 
 - CICIDS2017 was recorded in 2017 in a lab network; traffic mix and attack tools are dated.
 - Classes are heavily imbalanced (some classes have tens of rows); per-class metrics for rare classes are unreliable.

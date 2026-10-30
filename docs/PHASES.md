@@ -102,7 +102,7 @@ Full MachineLearningCSV.zip (~225 MB) is needed: ask before downloading if not a
 
 ## Phase 6 — Simulator and demo
 
-**Deliverables:** `simulator/simulate_attack.py` with modes `portscan`, `udp_flood`, `syn_flood`; hard cap on packet rate and count (default 200 packets, 10 ms interval); refuses any target outside 127.0.0.0/8; `--dry-run`. `docker-compose.demo.yml`. docs/DEMO.md (5-minute walkthrough). Tests for the target check and caps.
+**Deliverables:** `simulator/simulate_attack.py` with modes `portscan`, `udp_flood`, `syn_flood`; hard cap on packet rate and count (default 200 packets, 10 ms interval); refuses any target outside 127.0.0.0/8; `--dry-run`. docs/DEMO.md (5-minute walkthrough). (`docker-compose.demo.yml` moved to Phase 7 with the Dockerfiles; human decision.) Tests for the target check and caps.
 
 **Gate:** Following docs/DEMO.md on a fresh machine shows an alert in the dashboard within 5 minutes with no code edits.
 
@@ -112,7 +112,7 @@ Full MachineLearningCSV.zip (~225 MB) is needed: ask before downloading if not a
 
 ## Phase 7 — Packaging
 
-**Deliverables:** Backend Dockerfile (python slim), frontend Dockerfile (Node build, Nginx serve), `docker-compose.yml` (shared SQLite volume, env vars, host networking for capture), `.github/workflows/ci.yml` (Ruff, pytest, frontend build, both Docker builds), CONTRIBUTING.md, LICENSE (MIT), finished docs/LIMITATIONS.md (what it cannot detect, trust boundary, feature approximation, production changes such as Zeek, PostgreSQL, a separate sensor).
+**Deliverables:** `docker-compose.demo.yml` (moved from Phase 6), backend Dockerfile (python slim), frontend Dockerfile (Node build, Nginx serve), `docker-compose.yml` (shared SQLite volume, env vars, host networking for capture), `.github/workflows/ci.yml` (Ruff, pytest, frontend build, both Docker builds), CONTRIBUTING.md, LICENSE (MIT), finished docs/LIMITATIONS.md (what it cannot detect, trust boundary, feature approximation, production changes such as Zeek, PostgreSQL, a separate sensor).
 
 **Gate:** `docker compose up --build` works on a clean machine, CI passes on main, and LIMITATIONS.md is specific and honest.
 
