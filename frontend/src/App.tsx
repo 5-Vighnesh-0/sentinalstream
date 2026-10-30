@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import AlertDetail from "./components/AlertDetail";
 import AlertFeed, { type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
-import PCAPUpload from "./components/PCAPUpload";
+import InEffectStrip from "./components/InEffectStrip";
+import { inEffect } from "./components/Level";
+import PCAPUpload, { type Batch } from "./components/PCAPUpload";
+import StatusPill from "./components/StatusPill";
 import TokenForm from "./components/TokenForm";
 import TrafficChart, { type TrafficPoint } from "./components/TrafficChart";
-import { API_URL, TRAFFIC_WINDOW_S, WS_URL } from "./config";
+import { API_URL, STALE_AFTER_MS, TRAFFIC_WINDOW_S, WS_URL } from "./config";
 import { authHeader, loadToken, saveToken } from "./token";
 import { useWebSocket } from "./useWebSocket";
 
 const KEPT_ALERTS = 1000; // per view, in memory; the feed renders at most 200
+const KEPT_CHANGED = 200; // rows held lit until looked at
 
 /** Newest activity first; an aggregated update (same id, higher count) replaces the old copy.
  *  The cap is per view (live, each upload) so a busy live stream never evicts an upload's alerts. */
@@ -27,11 +32,23 @@ export default function App() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [traffic, setTraffic] = useState<TrafficPoint[]>([]);
   const [iface, setIface] = useState<string | null>(null);
+  const [lastStatAt, setLastStatAt] = useState<number | null>(null);
   const [modelLoaded, setModelLoaded] = useState<boolean | null>(null);
-  const [batches, setBatches] = useState<Record<number, string>>({});
+  const [batches, setBatches] = useState<Record<number, Batch>>({});
   const [token, setToken] = useState(loadToken);
   const [rejected, setRejected] = useState(false);
   const [view, setView] = useState<number | null>(null); // null = live traffic, else an upload batch id
+  const [severity, setSeverity] = useState("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [changed, setChanged] = useState<Map<string, "new" | "updated">>(new Map());
+  const [announcement, setAnnouncement] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const known = useRef(new Map<string, number>()); // id -> count, to tell a new alert from an update
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000); // in-effect windows and "ago" text count down
+    return () => clearInterval(timer);
+  }, []);
 
   const loadAlerts = useCallback(async (batchId: number | null) => {
     const query = batchId === null ? "limit=200" : `limit=500&batch_id=${batchId}`;
@@ -42,6 +59,7 @@ export default function App() {
         return;
       }
       const page = await response.json();
+      for (const a of page.items as AlertItem[]) known.current.set(a.id, a.count);
       setAlerts((prev) => upsert(prev, page.items));
     } catch {
       // the connection banner already says the backend is unreachable
@@ -60,18 +78,42 @@ export default function App() {
 
   const onMessage = useCallback((message: { type: string; data: any }) => {
     if (message.type === "alert") {
-      setAlerts((prev) => upsert(prev, [message.data]));
+      const a: AlertItem = message.data;
+      const before = known.current.get(a.id);
+      known.current.set(a.id, a.count);
+      if (a.batch_id === null && (before === undefined || a.count > before)) {
+        setChanged((prev) => {
+          const next = new Map(prev).set(a.id, before === undefined ? "new" : "updated");
+          if (next.size > KEPT_CHANGED) next.delete(next.keys().next().value!);
+          return next;
+        });
+        if (before === undefined && a.severity === "high") {
+          setAnnouncement(`New High alert: ${a.attack_type} from ${a.src_ip}`);
+        }
+      }
+      setAlerts((prev) => upsert(prev, [a]));
     } else if (message.type === "stats") {
       setIface(message.data.iface);
+      setLastStatAt(Date.now());
       const time = new Date(message.data.timestamp).toLocaleTimeString();
       setTraffic((prev) => [...prev, { time, pps: message.data.packets_per_s }].slice(-TRAFFIC_WINDOW_S));
     } else if (message.type === "batch") {
-      setBatches((prev) => ({ ...prev, [message.data.batch_id]: message.data.status }));
+      const { batch_id: id, status } = message.data;
+      setBatches((prev) => ({ ...prev, [id]: { name: prev[id]?.name ?? `Upload ${id}`, status } }));
     }
   }, []);
 
   const status = useWebSocket(token && !rejected ? WS_URL : null, { onMessage, onOpen, onClose: () => loadAlerts(null) }, ["sentinelstream", token]);
-  const visible = alerts.filter((a) => a.batch_id === view);
+  const stale = status === "open" && lastStatAt !== null && now - lastStatAt > STALE_AFTER_MS;
+  const live = alerts.filter((a) => a.batch_id === null);
+  const visible = view === null ? live : alerts.filter((a) => a.batch_id === view);
+  const selected = visible.find((a) => a.id === selectedId) ?? null;
+  const highInEffect = live.filter((a) => a.severity === "high" && inEffect(a, now)).length;
+  const locked = !token || rejected;
+
+  useEffect(() => {
+    document.title = highInEffect ? `(${highInEffect} High) SentinelStream` : "SentinelStream";
+  }, [highInEffect]);
 
   function saveNewToken(t: string) {
     saveToken(t);
@@ -81,55 +123,106 @@ export default function App() {
 
   function viewBatch(batchId: number | null) {
     setView(batchId);
+    setSeverity("all");
+    setSelectedId(null);
     if (batchId !== null) loadAlerts(batchId);
   }
 
+  const seen = useCallback((id: string) => {
+    setChanged((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const tabs: [number | null, string][] = [
+    [null, "Live"],
+    ...Object.entries(batches)
+      .filter(([, b]) => b.status === "done")
+      .map(([id, b]) => [Number(id), b.name] as [number, string]),
+  ];
+
+  function onTabKey(e: React.KeyboardEvent, index: number) {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    const next = (index + step + tabs.length) % tabs.length;
+    viewBatch(tabs[next][0]);
+    (e.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus();
+  }
+
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-2xl font-semibold">SentinelStream</h1>
-        <p className="text-sm text-muted">
-          {{ idle: "Waiting for the dashboard token", open: "Connected", connecting: "Connecting…", reconnecting: "Reconnecting…" }[status]}
-          {iface && ` · capturing on ${iface}`}
-        </p>
+    <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
+      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-hairline pb-3">
+        <h1 className="text-lg font-bold tracking-tight">SentinelStream</h1>
+        {!locked && (
+          <div role="tablist" aria-label="View" className="flex max-w-full gap-1 overflow-x-auto">
+            {tabs.map(([id, label], i) => (
+              <button
+                key={id ?? "live"}
+                type="button"
+                role="tab"
+                aria-selected={view === id}
+                tabIndex={view === id ? 0 : -1}
+                onClick={() => viewBatch(id)}
+                onKeyDown={(e) => onTabKey(e, i)}
+                title={label}
+                className={`max-w-48 truncate rounded-md px-3 py-1.5 text-sm font-medium ${view === id ? "bg-ink text-white" : "text-muted hover:bg-sunk hover:text-ink"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="ml-auto">
+          <StatusPill status={status} iface={iface} pps={traffic.length ? traffic[traffic.length - 1].pps : null} lastStatAt={lastStatAt} now={now} stale={stale} />
+        </div>
       </header>
-      <Banners status={status} iface={iface} modelLoaded={modelLoaded} />
-      {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="space-y-2">
-          {!token || rejected ? (
-            <TokenForm onSave={saveNewToken} rejected={rejected} />
-          ) : (
-            <>
-          <label className="flex items-center gap-2 text-sm text-muted">
-            View
-            <select
-              className="rounded border border-hairline bg-surface px-2 py-1 text-ink"
-              value={view ?? "live"}
-              onChange={(e) => viewBatch(e.target.value === "live" ? null : Number(e.target.value))}
-            >
-              <option value="live">Live traffic</option>
-              {Object.keys(batches).map((id) => (
-                <option key={id} value={id}>Upload {id}</option>
-              ))}
-            </select>
-          </label>
-          <AlertFeed alerts={visible} captureTime={view !== null} />
-            </>
-          )}
+      {iface === "lo" && (
+        <p className="text-sm text-muted">Demo mode: capturing loopback traffic only, so alerts come from programs on this computer.</p>
+      )}
+      <Banners status={status} modelLoaded={modelLoaded} />
+      <p aria-live="polite" className="sr-only">{announcement}</p>
+      <main className="space-y-4">
+        {!locked && <InEffectStrip alerts={visible} now={now} capture={view !== null} severity={severity} onSeverity={setSeverity} />}
+        {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="space-y-4">
+            {locked ? (
+              <TokenForm onSave={saveNewToken} rejected={rejected} />
+            ) : (
+              <>
+                {selected && <AlertDetail alert={selected} now={now} onClose={() => setSelectedId(null)} />}
+                <AlertFeed
+                  key={view ?? "live"}
+                  alerts={visible}
+                  captureTime={view !== null}
+                  now={now}
+                  severity={severity}
+                  onSeverity={setSeverity}
+                  changed={changed}
+                  onSeen={seen}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                />
+              </>
+            )}
+          </div>
+          <div className="space-y-4">
+            <TrafficChart points={traffic} stale={stale || status === "reconnecting"} />
+            <AttackDistribution alerts={visible} />
+            {!locked && (
+              <PCAPUpload
+                batches={batches}
+                onUploaded={(id, name) => setBatches((prev) => ({ ...prev, [id]: { name, status: prev[id]?.status ?? "pending" } }))}
+                token={token}
+                onRejected={() => setRejected(true)}
+              />
+            )}
+          </div>
         </div>
-        <div className="space-y-4">
-          <TrafficChart points={traffic} />
-          <AttackDistribution alerts={visible} />
-          <PCAPUpload
-            batches={batches}
-            onUploaded={(id) => setBatches((prev) => ({ ...prev, [id]: prev[id] ?? "pending" }))}
-            onView={viewBatch}
-            token={token}
-            onRejected={() => setRejected(true)}
-          />
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
