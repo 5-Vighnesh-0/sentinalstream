@@ -1,12 +1,12 @@
-from pathlib import Path
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from backend.db.writer import AlertAggregator, Writer
 from backend.detection.detectors import Detectors
 from backend.features.extractor import Flow
 
-T0 = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
 MODEL = Path(__file__).resolve().parents[1] / "models" / "isolation_forest.joblib"
 
 

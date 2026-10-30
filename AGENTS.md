@@ -33,7 +33,7 @@ Rules for anyone working on SentinelStream, human or AI agent.
 - Trained models are committed to git, compressed, and refused at load if their sha256 doesn't match the sidecar (D3).
 - Weak-spot decisions D1–D6 and which phase owns each fix: [docs/superpowers/specs/2026-10-28-weak-spot-hardening-design.md](docs/superpowers/specs/2026-10-28-weak-spot-hardening-design.md).
 - Benchmark: CICIDS2017 CSVs, shared feature subset, stratified split, PPS rule vs Isolation Forest vs Random Forest.
-- Docker capture needs `network_mode: host` + `NET_RAW`/`NET_ADMIN`; the simulator shares the backend's network namespace.
+- Docker capture needs `network_mode: host` + `NET_RAW` (Phase 7 verified NET_ADMIN is not needed); the simulator shares the backend's network namespace.
 - Queue overflow: `get_nowait()` once, then `put_nowait()`, log a warning with a dropped counter. Never block the sniff callback.
 - No ML in the sniff callback. Bridge with `loop.call_soon_threadsafe(asyncio_queue.put_nowait, alert)`. One long-lived SQLite connection in the writer thread; batch 50 alerts or 2 s.
 - PCAP upload: size cap (50 MB), extension check, generated filename in a temp dir. Never use the client filename as a path.

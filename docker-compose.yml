@@ -1,0 +1,37 @@
+# docker compose up --build   ->   dashboard at http://localhost:3000, API at http://127.0.0.1:8000
+# Linux only: host networking is what lets the backend capture the host's loopback (see docs/LIMITATIONS.md).
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    network_mode: host  # a container's own lo is not the host's lo
+    cap_drop: [ALL]
+    cap_add: [NET_RAW]  # sniffing only; no NET_ADMIN
+    security_opt: ["no-new-privileges:true"]
+    read_only: true  # models/ and code are read-only inside the image
+    tmpfs: [/tmp]  # upload temp files and the upload parser's spawned process
+    volumes:
+      - sentinel-data:/app/data
+    environment:
+      SENTINEL_IFACE: lo
+      SENTINEL_MODEL_PATH: models/random_forest.joblib
+      SENTINEL_DB_PATH: /app/data/sentinelstream.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  frontend:
+    build: frontend
+    ports:
+      - "127.0.0.1:3000:3000"  # never 0.0.0.0: the dashboard and API are unauthenticated
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]  # nginx's master process starts its workers as the nginx user
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+
+volumes:
+  sentinel-data:

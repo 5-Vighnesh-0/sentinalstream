@@ -37,7 +37,7 @@ def _child(path: str, model_path: str, out) -> None:
 
         flows, _ = flows_from_pcap(path)
         out.put(("ok", Detectors(model_path).score(flows)))
-    except BaseException as e:  # MemoryError and parser crashes included: report, don't hang the parent
+    except BaseException as e:  # noqa: BLE001 - MemoryError and parser crashes included: report, don't hang the parent
         out.put(("error", f"{type(e).__name__}: {e}"))
 
 

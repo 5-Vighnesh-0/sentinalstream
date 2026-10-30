@@ -2,7 +2,7 @@
 
 Real-time network intrusion detection on a single laptop CPU. SentinelStream captures live traffic (or reads a PCAP), groups packets into flows, scores each flow with machine-learning detectors, and streams alerts to a React dashboard over WebSocket.
 
-> **Status: Phase 6 — simulator and demo.** Try it: [docs/DEMO.md](docs/DEMO.md). See [docs/PHASES.md](docs/PHASES.md) for the plan and [PROGRESS.md](PROGRESS.md) for what's done.
+> **Status: all seven phases complete.** Try it: [Quick start](#quick-start) or [docs/DEMO.md](docs/DEMO.md). See [docs/PHASES.md](docs/PHASES.md) for the plan and [PROGRESS.md](PROGRESS.md) for what's done.
 
 ## What it does
 
@@ -16,22 +16,43 @@ Built for a junior SOC analyst or IT admin at a small organisation who wants one
 
 ## Architecture
 
-_Diagram placeholder — rendered diagram added in Phase 7._ The text diagram, components, data flows and trust boundary are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+```mermaid
+flowchart LR
+    subgraph Untrusted
+        NIC[packets on lo] 
+        UP[PCAP upload]
+        BR[browser]
+    end
+    NIC -->|BPF filter, inbound only| CAP[capture thread<br/>Scapy, drop-oldest queue]
+    CAP --> FT[flow table<br/>5 s idle / 10 s active / FIN / RST]
+    UP -->|size, type, origin checks| SB[sandboxed parser<br/>memory/CPU/time limits]
+    SB --> DET
+    FT --> DET[detectors<br/>Random Forest, port-scan rule,<br/>Isolation Forest]
+    DET --> AGG[alert merging D4]
+    AGG --> W[(SQLite<br/>batched writer)]
+    AGG --> WS[WebSocket /ws/alerts]
+    W --> API[REST /alerts /health]
+    WS --> BR
+    API --> BR
+```
 
-```
-packets ─► capture thread ─► flow table ─► inference thread ─┬─► SQLite (batched writer)
-PCAP upload ─► PCAP worker ───────────────────┘              └─► WebSocket ─► React dashboard
-```
+Components, the three data flows (live, upload, offline training) and the trust boundary are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start
 
-_Placeholder — filled in Phase 7._ Target:
+Linux with Docker Compose (host networking is what lets the backend capture the host's loopback):
 
 ```bash
 docker compose up --build
 ```
 
-Then open http://localhost:3000. The 5-minute demo with the attack simulator will be in `docs/DEMO.md` (Phase 6).
+Open <http://localhost:3000>. To also run a port scan against your own machine once the backend is up:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+```
+
+The alert appears in the dashboard as **High · PortScan · Port-scan rule**. Without Docker, follow [docs/DEMO.md](docs/DEMO.md) (about 5 minutes). Both paths use the committed models: no dataset download is needed.
 
 ## Results
 
@@ -70,4 +91,4 @@ Trained on CICIDS2017: Sharafaldin, Lashkari, Ghorbani, "Toward Generating a New
 
 ## License
 
-MIT (LICENSE file added in Phase 7).
+MIT, see [LICENSE](LICENSE). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).

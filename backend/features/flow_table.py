@@ -73,7 +73,7 @@ def flows_from_pcap(path) -> tuple[list[Flow], Counter]:
                 pkt = next(packets)
             except StopIteration:
                 break
-            except Exception:  # truncated or corrupt file: keep what was read
+            except Exception:  # noqa: BLE001 - truncated or corrupt file: keep what was read
                 stats["truncated"] += 1
                 break
             stats["packets"] += 1
@@ -82,7 +82,7 @@ def flows_from_pcap(path) -> tuple[list[Flow], Counter]:
                     stats["skipped_fragments"] += 1
                     continue
                 p = parse_packet(pkt)
-            except Exception:  # hostile input: one bad packet must not abort the file
+            except Exception:  # noqa: BLE001 - hostile input: one bad packet must not abort the file
                 stats["skipped_errors"] += 1
                 continue
             if p is None:

@@ -5,7 +5,7 @@ offline detection, live inference and the benchmark. See docs/DATA_MODEL.md.
 """
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
@@ -94,7 +94,7 @@ def save_model(model, model_path, **metadata) -> None:
         "model": model_path.stem,
         "feature_order": FEATURES,
         "sklearn_version": sklearn.__version__,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "created_at": datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "sha256": file_sha256(model_path),
         **metadata,
     }

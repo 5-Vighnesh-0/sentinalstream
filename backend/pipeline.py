@@ -21,10 +21,10 @@ from scapy.sendrecv import sniff as scapy_sniff
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `python backend/pipeline.py`
 
-from backend.capture.sniffer import QUEUE_SIZE, CaptureThread, listen_socket  # noqa: E402
-from backend.detection.detectors import SCORED_PROTOCOLS, Detectors  # noqa: E402
-from backend.features.extractor import is_non_first_fragment, parse_packet  # noqa: E402
-from backend.features.flow_table import TICK_S, FlowTable  # noqa: E402
+from backend.capture.sniffer import QUEUE_SIZE, CaptureThread, listen_socket
+from backend.detection.detectors import SCORED_PROTOCOLS, Detectors
+from backend.features.extractor import is_non_first_fragment, parse_packet
+from backend.features.flow_table import TICK_S, FlowTable
 
 log = logging.getLogger("sentinelstream.pipeline")
 
@@ -83,7 +83,7 @@ class Pipeline:
                 self.stats["packets"] += 1
                 try:
                     p = None if is_non_first_fragment(pkt) else parse_packet(pkt)
-                except Exception:  # hostile input: one bad packet must not stop capture
+                except Exception:  # noqa: BLE001 - hostile input: one bad packet must not stop capture
                     self.stats["skipped_errors"] += 1
                     p = None
                 if p is not None:

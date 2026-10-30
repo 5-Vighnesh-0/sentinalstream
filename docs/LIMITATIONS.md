@@ -1,6 +1,6 @@
 # Limitations
 
-Draft written in Phase 0. Each phase adds what it learns; Phase 7 finishes it. Nothing here is a measured result.
+Written during the build and finished in Phase 7. Numbers here come from scripts in this repo; the phase each comes from is named so it can be re-run.
 
 ## Feature approximation
 
@@ -55,8 +55,9 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 
 ## Capture and Docker
 
-- Live capture needs root or `CAP_NET_RAW`/`CAP_NET_ADMIN`.
-- A container's loopback is not the host's loopback. Live capture in Docker needs `network_mode: host` plus `NET_RAW`/`NET_ADMIN`, and the simulator must run in the same network namespace as the backend.
+- Live capture needs root or `CAP_NET_RAW`.
+- A container's loopback is not the host's loopback. Live capture in Docker needs `network_mode: host` plus `NET_RAW` (Phase 7 runs with every other capability dropped), and the simulator must run in the same network namespace as the backend.
+- The backend container runs as root inside the container, limited to `NET_RAW`, `no-new-privileges` and a read-only filesystem; a non-root user would not keep `NET_RAW` without file capabilities on the Python binary. Membership of the host's `docker` group is itself root-equivalent.
 - Host networking behaves as documented only on Linux. On Docker Desktop (macOS/Windows), `lo` inside the VM is not the host's loopback, so the demo is supported on Linux only.
 - Python + Scapy capture is suited to low traffic rates (a laptop, a lab). In Phase 2 a 20,000-packet loopback burst lost 39,213 packets (UDP plus ICMP replies) in the kernel before Python read them; the capture thread's Scapy dissection is the bottleneck. Losses are counted (`dropped_packets` for our queue, `kernel_dropped_packets` for the socket), not prevented.
 - On `lo` the kernel delivers every packet twice to packet sockets; capture keeps only the incoming copy (BPF `inbound`), as libpcap does. Scapy's `sniff` must not be given `iface` together with an opened socket, or it opens a second, unfiltered socket (Phase 2 bug, fixed in `9ca23c5`).
@@ -71,9 +72,12 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 - The dashboard keeps at most 1,000 alerts per view in memory and renders the latest 200; older ones are in SQLite (`GET /alerts`). Past uploads are not listed after a page reload: there is no endpoint that lists upload batches, so an earlier upload's alerts are reachable only through `GET /alerts?batch_id=`.
 - Privacy: on a real interface, alerts store IP addresses, which are personal data in many jurisdictions. Keep `data/` local; CI never uploads it.
 
-## What production would change (to be expanded in Phase 7)
+## What production would change
 
-- Zeek or a C-based flow exporter instead of Python packet capture.
-- PostgreSQL (or a time-series store) instead of SQLite.
-- A separate sensor host feeding a central collector, with authentication and TLS on the API.
-- Features and training data from the deployment network, with periodic retraining and threshold tuning.
+- **Capture:** Zeek, Suricata or a C flow exporter (libpcap/AF_PACKET ring buffers) instead of Python + Scapy, which loses most of a burst in the kernel (Phase 2) and needs 4–15 ms per flow to score (Phase 5).
+- **Placement:** a separate sensor on a SPAN port or network tap feeding a central collector, instead of one laptop watching its own loopback.
+- **Features:** the full CICFlowMeter feature set computed by the same tool at training and run time (removes the flow-boundary and feature mismatch), plus cross-flow features (hosts contacted, ports per source) inside the model instead of one hand-written scan rule.
+- **Data and evaluation:** training data from the deployment network, a time-based split, and periodic retraining with threshold tuning on measured false-positive cost; the random split and 2017 lab traffic make the numbers here optimistic.
+- **Storage:** PostgreSQL or a time-series store with retention by age, instead of one SQLite file capped by row count.
+- **Access:** authentication, TLS and per-user audit on the API and WebSocket; today they rely on binding 127.0.0.1.
+- **Alert handling:** acknowledgement, suppression and tuning workflows, and export to a SIEM; this dashboard only displays alerts.

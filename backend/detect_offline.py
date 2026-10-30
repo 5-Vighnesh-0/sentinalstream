@@ -13,8 +13,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `python backend/detect_offline.py`
 
-from backend.detection.detectors import COLUMNS, SCORED_PROTOCOLS, Detectors  # noqa: E402
-from backend.features.flow_table import flows_from_pcap  # noqa: E402
+from backend.detection.detectors import COLUMNS, SCORED_PROTOCOLS, Detectors
+from backend.features.flow_table import flows_from_pcap
 
 
 def detect(pcap, model_path):

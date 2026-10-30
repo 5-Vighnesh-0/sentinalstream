@@ -15,7 +15,7 @@ from sklearn.preprocessing import FunctionTransformer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # allow `python backend/ml/train_baseline.py`
 
-from backend.features.feature_set import CICIDS_NEEDED, FEATURES, from_cicids, save_model  # noqa: E402
+from backend.features.feature_set import CICIDS_NEEDED, FEATURES, from_cicids, save_model
 
 DEFAULT_OUT = "models/isolation_forest.joblib"
 RANDOM_STATE = 42

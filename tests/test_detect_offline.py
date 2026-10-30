@@ -18,7 +18,7 @@ FLOOD = "TCP|127.0.0.1|60000|127.0.0.1|80"
 def run_cli(pcap, out, *extra):
     return subprocess.run(
         [sys.executable, "backend/detect_offline.py", "--pcap", str(pcap), "--out", str(out), *extra],
-        cwd=REPO, capture_output=True, text=True,
+        cwd=REPO, capture_output=True, text=True, check=False,
     )
 
 

@@ -1,6 +1,6 @@
 """Group packets into bidirectional 5-tuple flows and compute the shared features."""
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from scapy.layers.inet import ICMP, IP, TCP, UDP
 from scapy.layers.inet6 import IPv6, IPv6ExtHdrFragment
@@ -106,7 +106,7 @@ class Flow:
 
     @property
     def end_time(self) -> str:
-        dt = datetime.fromtimestamp(self.last_ts, tz=timezone.utc)
+        dt = datetime.fromtimestamp(self.last_ts, tz=UTC)
         return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     def features(self) -> dict:

@@ -60,9 +60,9 @@ def test_alerts_query_filters_and_paginates(client):
 
 
 def test_websocket_rejects_foreign_origin(client):
-    with pytest.raises(WebSocketDisconnect) as e:
-        with client.websocket_connect("ws://localhost/ws/alerts", headers={"origin": "http://evil.example"}) as ws:
-            ws.receive_json()
+    with (pytest.raises(WebSocketDisconnect) as e,
+          client.websocket_connect("ws://localhost/ws/alerts", headers={"origin": "http://evil.example"}) as ws):
+        ws.receive_json()
     assert e.value.code == 1008
 
 
@@ -82,7 +82,7 @@ def test_upload_needs_dashboard_origin_and_header(client):
 
 
 def test_upload_rejects_bad_extension_gzip_and_oversize(client, monkeypatch):
-    post = lambda name, data: client.post("/upload-pcap", files={"file": (name, data)}, headers=UPLOAD_HEADERS)  # noqa: E731
+    post = lambda name, data: client.post("/upload-pcap", files={"file": (name, data)}, headers=UPLOAD_HEADERS)
     assert post("x.txt", SAMPLE.read_bytes()).status_code == 400
     assert post("x.pcap", gzip.compress(SAMPLE.read_bytes())).status_code == 400
     monkeypatch.setattr(uploads, "MAX_UPLOAD_BYTES", 1000)
@@ -105,7 +105,7 @@ def test_upload_is_analysed_into_its_own_batch(client):
 def test_upload_backlog_full_returns_429(client, monkeypatch):
     release = threading.Event()
     monkeypatch.setattr(main, "analyse_upload", lambda path, model: release.wait(10) and [])
-    post = lambda: client.post("/upload-pcap", files={"file": ("x.pcap", SAMPLE.read_bytes())}, headers=UPLOAD_HEADERS)  # noqa: E731
+    post = lambda: client.post("/upload-pcap", files={"file": ("x.pcap", SAMPLE.read_bytes())}, headers=UPLOAD_HEADERS)
     assert post().status_code == 202
     wait_for(lambda: client.app.state.uploads.empty())  # the worker is busy with the first upload
     assert [post().status_code for _ in range(3)] == [202, 202, 429]

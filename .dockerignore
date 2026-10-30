@@ -1,0 +1,10 @@
+.git
+.venv
+.claude
+data
+frontend
+tests
+docs
+plans
+**/__pycache__
+*.pyc

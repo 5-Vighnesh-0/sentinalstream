@@ -116,6 +116,6 @@ Ports: frontend 3000 (set explicitly in `vite.config` and the Nginx config), bac
 
 ## Deployment (Phase 6–7)
 
-- Backend container: `python:3.12-slim`, `network_mode: host`, `cap_add: [NET_RAW, NET_ADMIN]`, binds `127.0.0.1:8000`, named volume for `data/`.
+- Backend container: `python:3.12-slim` (pinned by digest), `network_mode: host`, `cap_drop: [ALL]` + `cap_add: [NET_RAW]`, binds `127.0.0.1:8000`, named volume for `data/`.
 - Frontend container: Node 24 LTS build stage, Nginx serve stage, port 3000.
 - A container's loopback is not the host's loopback. Live capture on `lo` only sees host traffic with host networking, and the simulator must share the backend's network namespace (also `network_mode: host` in `docker-compose.demo.yml`). Linux hosts only; see [LIMITATIONS.md](LIMITATIONS.md).

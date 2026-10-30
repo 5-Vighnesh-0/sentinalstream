@@ -147,7 +147,7 @@ class Hub:
             for ws in list(self.clients):
                 try:
                     await asyncio.wait_for(ws.send_json(message), WS_SEND_TIMEOUT_S)
-                except Exception:  # slow or gone: the dashboard reconnects and re-fetches GET /alerts
+                except Exception:  # noqa: BLE001 - slow or gone: the dashboard reconnects and re-fetches GET /alerts
                     self.clients.discard(ws)
 
     async def stats(self, iface: str) -> None:

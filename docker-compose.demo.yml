@@ -1,0 +1,16 @@
+# Demo: docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+# Runs one loopback port scan once the backend is healthy; open http://localhost:3000 to see the alert.
+services:
+  simulator:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    network_mode: host  # must share the backend's network namespace, i.e. the host's loopback
+    command: ["python", "simulator/simulate_attack.py", "portscan"]
+    cap_drop: [ALL]  # portscan uses plain TCP connects: no raw sockets
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    restart: "no"
+    depends_on:
+      backend:
+        condition: service_healthy

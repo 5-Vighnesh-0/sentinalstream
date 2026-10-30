@@ -12,10 +12,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from scapy.sendrecv import AsyncSniffer  # noqa: E402
-from scapy.utils import wrpcap  # noqa: E402
+from scapy.sendrecv import AsyncSniffer
+from scapy.utils import wrpcap
 
-from backend.capture.sniffer import listen_socket  # noqa: E402
+from backend.capture.sniffer import listen_socket
 
 FILTERS = {
     "portscan": "tcp and host 127.0.0.1 and (dst portrange 1-200 or src portrange 1-200)",

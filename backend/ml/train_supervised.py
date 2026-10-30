@@ -15,8 +15,8 @@ from sklearn.ensemble import RandomForestClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # allow `python backend/ml/train_supervised.py`
 
-from backend.features.feature_set import FEATURES, save_model  # noqa: E402
-from backend.ml import cicids, train_baseline  # noqa: E402
+from backend.features.feature_set import FEATURES, save_model
+from backend.ml import cicids, train_baseline
 
 RF_OUT = "models/random_forest.joblib"
 IF_OUT = train_baseline.DEFAULT_OUT

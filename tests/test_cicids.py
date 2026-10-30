@@ -32,7 +32,7 @@ def test_clean_groups_dedups_and_drops_rare(monkeypatch):
 
 def test_split_is_stratified_and_deterministic():
     df = pd.DataFrame({"x": range(100), "label": ["BENIGN"] * 80 + ["DoS"] * 20})
-    train_a, test_a = cicids.split(df)
-    train_b, test_b = cicids.split(df)
+    _, test_a = cicids.split(df)
+    _, test_b = cicids.split(df)
     assert test_a.index.equals(test_b.index)
     assert (len(test_a), (test_a["label"] == "DoS").sum()) == (20, 4)
