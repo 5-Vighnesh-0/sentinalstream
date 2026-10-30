@@ -21,10 +21,10 @@ def test_full_queue_drops_oldest_and_warns(caplog):
 
 def test_capture_thread_survives_overflow():
     stop = threading.Event()
-    seen = {}
+    seen, sniffed = {}, {}
 
     def fake_sniff(**kwargs):
-        seen.update(kwargs)
+        sniffed.update(kwargs)
         n = 0
         while not stop.is_set():
             kwargs["prn"](n)
@@ -39,7 +39,9 @@ def test_capture_thread_survives_overflow():
     assert capture.is_alive()
     stop.set()
     capture.join(timeout=2)
-    assert (seen["iface"], seen["filter"], seen["store"]) == ("lo", BPF_FILTER, False)
+    assert (seen["iface"], seen["filter"], sniffed["store"]) == ("lo", BPF_FILTER, False)
+    # Given iface as well, Scapy opens a second, unfiltered socket and every packet is read 3 times.
+    assert "iface" not in sniffed and "filter" not in sniffed
 
 
 def test_kernel_drops_accumulate_across_reads():

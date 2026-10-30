@@ -38,7 +38,8 @@ class CaptureThread(threading.Thread):
         # Open the socket ourselves so kernel_dropped() can read its statistics.
         self._sock = self._listen(iface=self.iface, filter=BPF_FILTER)
         # store=False: Scapy would otherwise keep every packet in memory for the life of the capture.
-        self._sniff(opened_socket=self._sock, iface=self.iface, filter=BPF_FILTER, prn=self.enqueue, store=False)
+        # No iface/filter here: given iface too, Scapy opens a second, unfiltered socket of its own.
+        self._sniff(opened_socket=self._sock, prn=self.enqueue, store=False)
 
     def kernel_dropped(self) -> int:
         """Packets the kernel discarded before Scapy read them (socket buffer full during a burst).
