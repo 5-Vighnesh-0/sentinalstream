@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-page: #f3f5f7;
+  --color-surface: #ffffff;
+  --color-ink: #16232d;
+  --color-muted: #5d6c78;
+  --color-hairline: #dde3e8;
+  --color-traffic: #2a78d6;
+  /* dataviz status palette: always shown with a text label, never colour alone */
+  --color-sev-high: #d03b3b;
+  --color-sev-medium: #ec835a;
+  --color-sev-low: #fab219;
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes arrived {
+  from { background-color: #e8f1fc; }
+  to { background-color: transparent; }
+}
+
+.row-arrived {
+  animation: arrived 1.5s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-arrived { animation: none; }
+}

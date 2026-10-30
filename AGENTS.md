@@ -55,6 +55,8 @@ From the project brief: Python 3.11+, scapy, pandas, numpy, scikit-learn (joblib
 
 Approved by the human in Phase 0: python-multipart, httpx, uvicorn[standard], ruff, @testing-library/react, jsdom.
 
+Approved by the human in Phase 4: @tailwindcss/vite, @vitejs/plugin-react, @testing-library/dom (no typescript: .tsx is transpiled, not type-checked).
+
 Anything else: ask first.
 
 ## Logging progress
