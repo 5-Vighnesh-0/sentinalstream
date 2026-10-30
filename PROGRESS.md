@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **Phase 3 — in progress**
+Current phase: **Phase 3 — awaiting `phase 3 accepted`**
 
 Phase 2 accepted ("Accept Phase 2") on 2026-10-29 and pushed.
 
@@ -395,3 +395,100 @@ None.
 
 - The audio-visualizer false positives: D4 aggregation (Phase 3) collapses them; whether a longer active timeout reduces the train/live mismatch can be measured in Phase 5.
 - Gate 1 and the baseline ran on `eda1ca1` (Python-side dedup); gate 2 on `4356d62` (kernel-side dedup). Both remove the same duplicates; only the kernel-drop count differs.
+
+---
+
+## Phase 2 — correction after acceptance (2026-10-29)
+
+During the Phase 3 gate a stored scan flow was a lone RST (wrong direction). Diagnostics showed every loopback packet was read **three** times: `CaptureThread.run()` passed Scapy's `sniff` both our `opened_socket` and `iface`, and Scapy then opened its own unfiltered socket as well (`scapy/sendrecv.py`: `if not sniff_sockets or iface is not None`). Before `b9a3abc` Scapy's socket was the only one, so packets were read twice. **All Phase 2 live numbers above were measured on duplicated packets.** The evidence above is left as recorded; the corrected results replace docs/PHASE2_RESULTS.md.
+
+Fix: `9ca23c5` (no `iface`/`filter` passed to `sniff`; test asserts it).
+
+### Evidence — 30-port loopback scan through the real Pipeline, before and after
+
+```text
+before (first 3 lines of 90 flows):
+TCP|127.0.0.1|56272|127.0.0.1|1          fwd=2 bwd=1 rst=True first=1793321575.246278
+TCP|127.0.0.1|56272|127.0.0.1|1          fwd=1 bwd=1 rst=True first=1793321575.246310
+TCP|127.0.0.1|1|127.0.0.1|56272          fwd=1 bwd=0 rst=True first=1793321575.246357
+kernel drops: 3 queue drops: 0
+after (first 3 lines of 30 flows):
+TCP|127.0.0.1|55282|127.0.0.1|1          fwd=1 bwd=1 rst=True first=1793321728.634999
+TCP|127.0.0.1|57902|127.0.0.1|2          fwd=1 bwd=1 rst=True first=1793321728.636108
+TCP|127.0.0.1|48326|127.0.0.1|3          fwd=1 bwd=1 rst=True first=1793321728.636832
+kernel drops: 0 queue drops: 0
+```
+
+### Evidence — Phase 2 gate re-run on 9ca23c5 (laptop awake throughout)
+
+```text
+2026-10-29 20:55:46,233 INFO capturing on lo with models/isolation_forest.joblib
+2026-10-29 20:56:46,286 INFO summary {"elapsed_s": 60.1, "packets": 6889, "flows_scored": 124, "flows_unscored": 0, "dropped_packets": 0, "kernel_dropped_packets": 0, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 5.34, "alerts": {"isolation_forest": 6}, "alerts_per_hour": {"isolation_forest": 359.7}}
+2026-10-29 20:56:50,565 INFO capturing on lo with models/isolation_forest.joblib
+2026-10-29 20:57:20,616 INFO summary {"elapsed_s": 30.1, "packets": 3399, "flows_scored": 4, "flows_unscored": 1, "dropped_packets": 0, "kernel_dropped_packets": 39213, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 5.24, "alerts": {"isolation_forest": 3}, "alerts_per_hour": {"isolation_forest": 359.4}}
+2026-10-29 20:57:25,365 INFO capturing on lo with models/isolation_forest.joblib
+2026-10-29 21:27:25,400 INFO summary {"elapsed_s": 1800.0, "packets": 157893, "flows_scored": 428, "flows_unscored": 5, "dropped_packets": 0, "kernel_dropped_packets": 0, "active_flows": 0, "evicted_flows": 0, "max_delay_s": 6.19, "alerts": {"isolation_forest": 179}, "alerts_per_hour": {"isolation_forest": 358.0}}
+```
+
+All alerts in the three runs: `TCP|127.0.0.1|34812|127.0.0.1|43749` (KDE audio-visualizer widget). Gate 2 logged no queue-full warning: the queue never filled because the capture thread is the bottleneck and excess is dropped (and counted) in the kernel. The warning path is covered by `tests/test_sniffer.py` and was observed live on `4356d62`.
+
+---
+
+## Phase 3 — API and persistence
+
+Plan: [plans/phase-3-PLAN.md](plans/phase-3-PLAN.md)
+
+### Tasks completed
+
+- [x] Dependencies (approved in Phase 0) pinned in requirements.txt: fastapi 0.162.0, uvicorn[standard] 0.54.0, python-multipart 0.0.32, httpx 0.28.1
+- [x] `backend/db/writer.py` — schema per DATA_MODEL.md (WAL), `AlertAggregator` (D4, 30 s window, batch-separated, bounded), `Writer` thread (one connection, upsert batches of 50 or 2 s, bounded queue, retention 100,000 + orphan flows) — `69d247c`
+- [x] `backend/api/uploads.py` — spawned child with `RLIMIT_AS` 2 GB, `RLIMIT_CPU` 120 s, 180 s wall clock; dead child detected early; filename sanitising; upload dir wiped at startup
+- [x] `backend/api/main.py` — `create_app(capture=True)`: TrustedHost, CORS (two origins), streaming upload size limit (413), `/health` with `model_loaded`, `/alerts` with validated filters, `/upload-pcap` (403/400/413/429), `/ws/alerts` (Origin → 1008), `stats` every 1 s, `batch` status messages, `call_soon_threadsafe` bridge into a bounded `asyncio.Queue`; `SENTINEL_MODEL_PATH` must resolve under `models/` — `e963aae`
+- [x] Pipeline keeps at most 10,000 alerts in memory
+- [x] Tests: `tests/test_writer.py`, `tests/test_api.py` (incl. bad Host → 400, bad WS Origin → 1008, upload without header → 403, gzip → 400, 1,000 scan probes → 1 aggregated alert, oversize → 413, backlog → 429, model path outside `models/`) — 58 passed
+- [x] Capture bug found by this gate and fixed (`9ca23c5`, see Phase 2 correction)
+
+### Trimmed (ponytail ultra)
+
+- No per-alert WebSocket rate cap (detectors already emit at most once per flow / once per 10 s per scanning source).
+- No ORM; stdlib `sqlite3`.
+
+### Evidence — gate (commit 9ca23c5)
+
+```text
+== start: sudo uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
+== GET /health
+{"status":"ok","model_loaded":true}
+== WebSocket client (Origin http://localhost:3000) waiting for an alert
+== loopback traffic: TCP connect scan of 127.0.0.1 ports 1-40 (no root needed)
+== alert received over WebSocket
+{"id": "44ce56fad6d944c7996ba20945208e28", "timestamp": "2026-10-30T00:55:37.262Z", "src_ip": "127.0.0.1", "dst_ip": "127.0.0.1", "src_port": 50082, "dst_port": 20, "protocol": "TCP", "attack_type": "PortScan", "confidence": 1.0, "severity": "high", "source": "rule", "count": 1, "last_seen": "2026-10-30T00:55:37.262Z", "batch_id": null, "flow_id": "ca7edeea59d940779fa65b795b3c52e5"}
+== same alert in SQLite (after the writer's 2 s batch)
+[('44ce56fad6d944c7996ba20945208e28', '2026-10-30T00:55:37.262Z', '127.0.0.1', '127.0.0.1', 'PortScan', 'rule', 'high', 1)]
+== stop uvicorn
+INFO:     connection open
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1460392]
+```
+
+### Evidence — clean clone
+
+```text
+$ git clone (HEAD 9ca23c5, no data/) && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+$ .venv/bin/pytest -q
+58 passed, 1 warning in 22.67s
+```
+
+### Gate verdict
+
+`uvicorn backend.api.main:app` starts, `GET /health` returns `{"status":"ok","model_loaded":true}`, a WebSocket client received alert `44ce56fa…` from a loopback scan, and SQLite holds the same alert (same id and fields). Test additions all pass.
+
+### Blockers
+
+None.
+
+### Notes
+
+- Starlette's test client warns that `httpx` is deprecated in favour of `httpx2`; `httpx` is the approved dependency, so it stays.

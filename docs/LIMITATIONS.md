@@ -38,8 +38,8 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 
 - It flags flows above the 99th percentile of benign training scores, so about 1% of benign CICIDS2017 Monday flows are flagged by design. The default `contamination="auto"` flagged a large share of its own benign training rows in a Phase 1 investigation and was rejected (see PROGRESS.md).
 - Confidence is the benign-score percentile, so every Isolation Forest alert has confidence ≥ 0.99. Severity for these unnamed alerts is `low`, or `medium` above p99.9 — never `high` (D6). A clear SYN flood can therefore show as `low`; only named detections reach `high`.
-- Trained on one day (Monday) of one lab network. "Normal" on another network will differ. Measured in Phase 2: a KDE audio-visualizer widget streaming 60 fps over a loopback WebSocket had every 10 s slice flagged (360 alerts/hour); the other ~870 flows in 30 minutes raised none.
-- On loopback every program shares 127.0.0.1, so the scan rule sees them as one source; a burst of DNS replies after resume (queries lost to kernel drops) raised one false `PortScan`.
+- Trained on one day (Monday) of one lab network. "Normal" on another network will differ. Measured in Phase 2: a KDE audio-visualizer widget streaming 60 fps over a loopback WebSocket had every 10 s slice flagged (358 alerts/hour); the other ~250 flows in 30 minutes raised none.
+- On loopback every program shares 127.0.0.1, so the scan rule sees all local programs as one source.
 
 ## Trust boundary and security
 
@@ -52,8 +52,8 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 - Live capture needs root or `CAP_NET_RAW`/`CAP_NET_ADMIN`.
 - A container's loopback is not the host's loopback. Live capture in Docker needs `network_mode: host` plus `NET_RAW`/`NET_ADMIN`, and the simulator must run in the same network namespace as the backend.
 - Host networking behaves as documented only on Linux. On Docker Desktop (macOS/Windows), `lo` inside the VM is not the host's loopback, so the demo is supported on Linux only.
-- Python + Scapy capture is suited to low traffic rates (a laptop, a lab). In Phase 2 a 20,000-packet loopback burst lost ~39,000 packets (UDP plus ICMP replies) in the kernel before Python read them. Losses are counted (`dropped_packets` for our queue, `kernel_dropped_packets` for the socket), not prevented.
-- On `lo` the kernel delivers every packet twice to packet sockets; capture keeps only the incoming copy (BPF `inbound`), as libpcap does.
+- Python + Scapy capture is suited to low traffic rates (a laptop, a lab). In Phase 2 a 20,000-packet loopback burst lost 39,213 packets (UDP plus ICMP replies) in the kernel before Python read them; the capture thread's Scapy dissection is the bottleneck. Losses are counted (`dropped_packets` for our queue, `kernel_dropped_packets` for the socket), not prevented.
+- On `lo` the kernel delivers every packet twice to packet sockets; capture keeps only the incoming copy (BPF `inbound`), as libpcap does. Scapy's `sniff` must not be given `iface` together with an opened socket, or it opens a second, unfiltered socket (Phase 2 bug, fixed in `9ca23c5`).
 
 ## Scale and storage
 

@@ -1,44 +1,41 @@
 # Phase 2 Results — Live capture
 
-All numbers come from `backend/pipeline.py` runs on `lo` (Linux, `sudo`), logs in `data/phase2_*.log` (git-ignored; key lines are copied into PROGRESS.md). Detectors: the committed Isolation Forest plus the port-scan rule. The Random Forest arrives in Phase 5.
+> **Correction (2026-10-29, after Phase 2 was accepted).** The first version of this file reported numbers measured while every loopback packet was read two or three times: Scapy's `sniff`, given both our socket and `iface`, silently opened a second, unfiltered socket. Found during the Phase 3 gate, fixed in `9ca23c5`, and all three checks re-run below. The original runs stay in PROGRESS.md as evidence of the bug.
+
+All numbers come from `backend/pipeline.py` runs on `lo` (Linux, `sudo`) at commit `9ca23c5`, logs in `data/phase2_*.log` (git-ignored; key lines are in PROGRESS.md). Detectors: the committed Isolation Forest plus the port-scan rule. The Random Forest arrives in Phase 5.
 
 ## Gate checks
 
 | Check | Run | Result |
 |---|---|---|
-| Curl loop → scored flows in near real time | 60 s, `curl` every 0.5 s against `python -m http.server` on 127.0.0.1:8081 (commit `eda1ca1`) | 120 flows scored, max delay from a flow's last packet to scoring **2.02 s**; 0 queue / 0 kernel drops; no alert on any curl flow |
-| Overfilled queue → warning, capture alive | 30 s, `--queue-size 50`, 20,000-packet UDP burst to 127.0.0.1:9 (commit `4356d62`) | `WARNING packet queue full: dropped 1 packets so far`; stats kept arriving for the full 30 s; 308 queue drops + **39,473 kernel drops**, both counted |
-| 30 min of normal loopback use → alerts/hour per detector | 1,800 s of awake time (commit `eda1ca1`; laptop suspended 15:14:40–20:04:24 in the middle, the pipeline's monotonic clock excludes it) | see below |
+| Curl loop → scored flows in near real time | 60 s, `curl` every 0.5 s against `python -m http.server` on 127.0.0.1:8081 | 124 flows scored, max delay from a flow's last packet to scoring **5.34 s** (5 s idle timeout + 1 s tick); 0 queue / 0 kernel drops; no alert on any curl flow |
+| Overfilled queue → warning, capture alive | 30 s, `--queue-size 50`, 20,000-packet UDP burst to 127.0.0.1:9 | Capture stayed alive for the full 30 s. 3,399 packets read, **39,213 dropped in the kernel and counted**. The queue itself did not fill: the capture thread (Scapy dissection) is the bottleneck, so excess is dropped before it reaches the queue. The queue-full warning path is proven by `tests/test_sniffer.py` (1,000+ drops, thread alive) and by the earlier live run on `4356d62` (warning logged, capture alive). |
+| 30 min of normal loopback use → alerts/hour per detector | 1,800 s, laptop awake throughout | see below |
 
-## False-positive baseline (30 awake minutes, normal desktop use)
+## False-positive baseline (30 minutes, normal desktop use)
 
 | | Value |
 |---|---|
-| Packets | 479,305 |
-| TCP/UDP flows scored | 1,053 (10 ICMP/other flows recorded, not scored) |
-| Isolation Forest alerts | **180 → 360 per hour** |
-| Scan-rule alerts | **1 → 2 per hour** |
-| Drops | 0 queue, 1,593 kernel (burst right after resume) |
+| Packets | 157,893 |
+| TCP/UDP flows scored | 428 (5 ICMP/other flows recorded, not scored) |
+| Isolation Forest alerts | **179 → 358 per hour** |
+| Scan-rule alerts | **0** |
+| Drops | 0 queue, 0 kernel |
 
-Every alert has an identified cause:
-
-- **All 180 Isolation Forest alerts** come from one connection: a KDE desktop widget (`luisbocanegra.audio.visualizer`) streams `cava` audio frames at 60 fps over a WebSocket on 127.0.0.1:34812 ↔ 43749. The flow table cuts this long-lived stream every 10 s (active timeout) and **every slice is flagged** — a continuous 60 fps local stream looks nothing like CICIDS2017's office traffic. The other ~870 flows raised **no** Isolation Forest alert.
-- **The 1 scan-rule alert** fired 9 s after resume: the DNS stub resolver (127.0.0.53:53) answered many local programs at once while the kernel dropped 1,593 packets; with queries lost and replies captured, the resolver looked like one source contacting ≥ 20 ports. On loopback every program also shares the address 127.0.0.1, so the rule sees all of them as a single source.
+**All 179 Isolation Forest alerts come from one connection**: a KDE desktop widget (`luisbocanegra.audio.visualizer`) streams `cava` audio frames at 60 fps over a WebSocket on 127.0.0.1:34812 ↔ 43749. The flow table cuts this long-lived stream every 10 s (active timeout) and **every slice is flagged**: a continuous 60 fps local stream looks nothing like CICIDS2017's office traffic. The other ~250 flows raised **no** alert.
 
 Phase 3's alert aggregation (D4) turns the widget's slices into one alert with a growing count; the per-flow flag itself remains.
 
-## Bugs found and fixed by the live gate
+## Bugs found and fixed by the live gates
 
-1. **Loopback duplicates.** Scapy's `L2ListenSocket` keeps `PACKET_OUTGOING` copies, and on `lo` the kernel hands packet sockets every packet twice, so live flows had double the packets and packets/s of the same traffic read from a PCAP. First fixed in Python (`eda1ca1`), then in the kernel BPF filter with `inbound` on `lo` (`4356d62`), so duplicates never fill the socket buffer. Same 20,000-packet burst: kernel drops **79,404 → 39,473**.
-2. **Invisible kernel drops.** Our counter only saw queue drops (17 reported while ~19,000 packets were lost). The capture thread now reads `PACKET_STATISTICS` from its socket and reports `kernel_dropped_packets` separately (`b9a3abc`).
-
-All gate runs before `eda1ca1` (with duplicates) are kept in PROGRESS.md as evidence of bug 1, not as results.
+1. **Every packet read 2–3 times on `lo`.** The kernel hands packet sockets every loopback packet twice (outgoing and incoming copy). Our socket now keeps only the incoming copy with BPF `inbound` (`4356d62`), and `sniff` is no longer given `iface`, which had made Scapy open its own unfiltered socket alongside ours (`9ca23c5`). Verified live: a 30-port loopback scan now gives exactly 30 flows (`fwd=1 bwd=1` each, scanner → port); before the fix it gave 90, a third of them reversed.
+2. **Invisible kernel drops.** Our counter only saw queue drops. The capture thread now reads `PACKET_STATISTICS` from its socket and reports `kernel_dropped_packets` (`b9a3abc`).
 
 ## What this shows
 
-- Capture → flow table → inference works live on `lo` with flows scored ~2 s after they end (FIN-closed) and ≤ ~6 s for idle-expired flows (5 s idle timeout + 1 s tick).
-- Under a burst Python capture cannot keep up; losses are now counted honestly instead of hidden, and the capture thread survives.
-- The UDP burst itself raised **no** alert: CICIDS2017 has no UDP-flood class, and one fixed 5-tuple UDP flow of this shape is not unusual enough for the Isolation Forest (documented in LIMITATIONS.md).
+- Capture → flow table → inference works live on `lo`: flows are scored within ~1 s of a RST and ≤ ~6 s for idle-expired flows.
+- Under a burst Python capture cannot keep up; losses are counted honestly and the capture thread survives.
+- The UDP burst raised **no** alert: CICIDS2017 has no UDP-flood class, and one fixed 5-tuple UDP flow of this shape is not unusual enough for the Isolation Forest (documented in LIMITATIONS.md).
 - The false-positive rate on real desktop traffic is dominated by one unusual benign app. "Normal" on this laptop is not normal in CICIDS2017.
 
 ## Reproduce
