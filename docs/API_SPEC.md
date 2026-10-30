@@ -97,9 +97,9 @@ Processing runs in the background PCAP worker. Alerts it produces carry the new 
 
 ## `WS /ws/alerts`
 
-Server → client JSON messages. Messages the client sends are ignored. The client offers the subprotocols `sentinelstream, <token>` and the server accepts `sentinelstream`. Before accepting, the server closes the connection with code **1008** unless `Origin` is `http://localhost:3000` or `http://127.0.0.1:3000` (CORS does not protect WebSockets) and the offered token is correct (wrong or missing token → **1008**). More than 20 connected clients → **1013**.
+Server → client JSON messages. Messages the client sends are ignored. The client offers the subprotocols `sentinelstream, <token>` and the server accepts `sentinelstream`. The server refuses the handshake unless `Origin` is `http://localhost:3000` or `http://127.0.0.1:3000` (CORS does not protect WebSockets) and the offered token is correct; it also refuses it when 20 clients are already connected. It refuses by closing before accept (code **1008** for Origin or token, **1013** for the client cap, as Starlette's test client reports them); uvicorn sends that to a real client as an **HTTP 403** handshake response.
 
-A browser cannot see the 1008 code of a handshake rejected before accept (it reports 1006), so the dashboard detects a bad token through the 401 on `GET /alerts`, probing on load and after each failed reconnect.
+A browser sees a refused handshake only as close code 1006, so the dashboard detects a bad token through the 401 on `GET /alerts`, probing on load and after each failed reconnect.
 
 Every message has the shape `{"type": "...", "data": {...}}`.
 
