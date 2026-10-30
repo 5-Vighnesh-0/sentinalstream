@@ -1,6 +1,8 @@
 # Progress
 
-Current phase: **Phase 2 — awaiting `phase 2 accepted`**
+Current phase: **Phase 3 — in progress**
+
+Phase 2 accepted ("Accept Phase 2") on 2026-10-29 and pushed.
 
 Phase 1 accepted ("phase 1 accepted") on 2026-10-29 and pushed.
 
