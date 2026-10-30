@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **Phase 7 — in progress**
+Current phase: **Phase 7 — awaiting `phase 7 accepted`**
 
 Phase 6 accepted ("Accept Phase 6") on 2026-10-29 and pushed.
 
@@ -752,3 +752,106 @@ None.
 
 - Only the port scan gets a correct name on loopback; syn_flood is mislabelled WebAttack/BruteForce (some High), udp_flood is an unnamed anomaly.
 - The demo is Linux-only and needs sudo for capture.
+
+---
+
+## Phase 7 — Packaging
+
+Decisions (human, 2026-10-29): LICENSE holder "Vighnesh Nair"; push to `main` before acceptance so CI can gate; hashed lock generated with pip-tools in a throwaway `python:3.12-slim` container (pip-tools is not a repo dependency).
+
+### Tasks completed
+
+- [x] `pyproject.toml` (Ruff: line length 120, py311); Ruff findings fixed; 5 deliberate broad `except`s kept with `noqa: BLE001` and a reason
+- [x] `requirements.lock`: 42 packages, 888 sha256 hashes (Python 3.12); `ruff==0.17.3` pinned
+- [x] `backend/Dockerfile` (python:3.12-slim by digest, tcpdump for BPF compilation, `--require-hashes`, uvicorn on 127.0.0.1), `frontend/Dockerfile` (node:24-alpine build with `npm ci --ignore-scripts`, nginx:1.29-alpine on 3000, both by digest), `.dockerignore` ×2
+- [x] `docker-compose.yml` (backend: host network, `cap_drop: ALL` + `NET_RAW`, `no-new-privileges`, read-only root, `/tmp` tmpfs, named data volume, healthcheck; frontend: `127.0.0.1:3000:3000`, CHOWN/SETGID/SETUID only, read-only) and `docker-compose.demo.yml` (simulator on the host network after the backend is healthy, no capabilities)
+- [x] `.github/workflows/ci.yml`: Ruff, pytest, Vitest, frontend build, dangerouslySetInnerHTML check, both Docker builds; actions pinned by SHA; `permissions: contents: read`; `persist-credentials: false`; no artifacts uploaded
+- [x] LICENSE (MIT), CONTRIBUTING.md, README (architecture diagram, quick start, license), LIMITATIONS.md finished; NET_ADMIN claims corrected (not needed, verified)
+- [x] Found by the gate and fixed (`e8c5db4`): the scan rule re-fired on a stale window 10.5 s after a scan (a DNS lookup raised a second high PortScan) → one alert per burst, with tests; the dashboard took 3.9 s to connect because browsers can try `::1` for `localhost` → it now uses 127.0.0.1 (153 ms)
+
+### Evidence — clean clone, `docker compose up --build` (first run, 415f5a6)
+
+```text
+$ git clone (HEAD 415f5a6) && docker compose -p sscheck -f docker-compose.yml -f docker-compose.demo.yml build --no-cache
+ backend  Built
+ frontend  Built
+ simulator  Built
+build: 122 s
+$ docker compose -p sscheck -f docker-compose.yml -f docker-compose.demo.yml up -d
+ Container sscheck-backend-1  Started
+ Container sscheck-frontend-1  Started
+ Container sscheck-backend-1  Healthy
+ Container sscheck-simulator-1  Started
+simulator: exited 0
+simulator-1  | sending 200 portscan packets to 127.0.0.1, one every 0.01 s (~2.0 s)
+simulator-1  | done
+$ curl /health ; curl /alerts?attack_type=PortScan
+{"status":"ok","model_loaded":true}
+total 1 | high PortScan rule 127.0.0.1:45632 -> 127.0.0.1:20
+up to alert: 136 s
+```
+
+```text
+$ docker inspect (capabilities, security, read-only, network, ports)
+sscheck-backend-1: CapAdd=[CAP_NET_RAW] CapDrop=[ALL] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=true NetworkMode=host Ports=map[]
+sscheck-frontend-1: CapAdd=[CAP_CHOWN CAP_SETGID CAP_SETUID] CapDrop=[ALL] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=true NetworkMode=sscheck_default Ports=map[3000/tcp:[{127.0.0.1 3000}]]
+sscheck-simulator-1: CapAdd=[] CapDrop=[ALL] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=true NetworkMode=host Ports=map[]
+$ grep Cap /proc/<backend pid>/status
+CapEff:	0000000000002000
+CapBnd:	0000000000002000
+0x0000000000002000=cap_net_raw
+$ ss -ltnp | grep -E ":8000|:3000"
+LISTEN 0      4096       127.0.0.1:3000       0.0.0.0:*   
+LISTEN 0      2048       127.0.0.1:8000       0.0.0.0:*
+```
+
+The first run also showed, through the API, a second high PortScan alert 10.5 s later on `127.0.0.1:43837 -> 127.0.0.53:53` (DNS): the stale re-fire fixed in `e8c5db4`.
+
+### Evidence — clean clone re-run after the fix (e8c5db4)
+
+```text
+$ git clone (HEAD e8c5db4) && docker compose -p sscheck2 -f docker-compose.yml -f docker-compose.demo.yml build --no-cache
+ backend  Built
+ frontend  Built
+ simulator  Built
+build: 123 s
+$ docker compose -p sscheck2 -f docker-compose.yml -f docker-compose.demo.yml up -d
+ Container sscheck2-backend-1  Started
+ Container sscheck2-frontend-1  Started
+ Container sscheck2-backend-1  Healthy
+ Container sscheck2-simulator-1  Started
+simulator: exited 0
+first alert check at +133 s
+$ curl /health ; curl /alerts?attack_type=PortScan (20 s after the scan)
+{"status":"ok","model_loaded":true}
+PortScan alerts: 1
+  2026-10-30T02:56:57.078Z high rule 127.0.0.1:43952 -> 127.0.0.1:20
+$ docker inspect / ss
+sscheck2-backend-1: CapAdd=[CAP_NET_RAW] CapDrop=[ALL] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=true NetworkMode=host Ports=map[]
+sscheck2-frontend-1: CapAdd=[CAP_CHOWN CAP_SETGID CAP_SETUID] CapDrop=[ALL] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=true NetworkMode=sscheck2_default Ports=map[3000/tcp:[{127.0.0.1 3000}]]
+sscheck2-simulator-1: CapAdd=[] CapDrop=[ALL] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=true NetworkMode=host Ports=map[]
+backend CapEff:	0000000000002000 (0x0000000000002000=cap_net_raw)
+LISTEN 0      4096       127.0.0.1:3000       0.0.0.0:*   
+LISTEN 0      2048       127.0.0.1:8000       0.0.0.0:*
+```
+
+Dashboard served by the nginx container: connected 153 ms after navigation (was 3,920 ms), one row `High 10:56:57 PM PortScan Port-scan rule 127.0.0.1:43952 → 127.0.0.1:20 100%`.
+
+### Evidence — CI on main
+
+```text
+run 40994657632 (CI) on e8c5db4: conclusion success
+  python: success
+  docker: success
+  frontend: success
+```
+
+### Gate verdict
+
+`docker compose up --build` works from a clean clone with a no-cache build (alert in 133 s including the build); the backend holds only `cap_net_raw` and both ports listen on 127.0.0.1 only; CI passes on main; LIMITATIONS.md lists what the system cannot detect, the trust boundary, the feature approximation and the production changes, each tied to a measured result.
+
+### Notes
+
+- Base images were already in the local Docker cache (digest-pinned, so identical); a machine without them also downloads ~200 MB.
+- Leftover Docker volumes from the gate runs, not deleted: `sentinelstream_sentinel-data`, `sscheck_sentinel-data`, `sscheck2_sentinel-data`.
+- `ruff format` is not enforced (would reformat 25 files); CI runs `ruff check`.
