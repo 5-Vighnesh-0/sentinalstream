@@ -49,9 +49,10 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 
 ## Trust boundary and security
 
-- No authentication. The backend binds `127.0.0.1:8000`; do not expose it on a network.
+- The REST and WebSocket API need a dashboard token, but it is a single shared secret: no users, no expiry, and anyone who can read `data/api-token` has it. The backend still binds `127.0.0.1:8000`; do not expose it on a network.
+- Local runs drop root via `setpriv` (see [DEMO.md](DEMO.md)), and the upload parser child drops all capabilities. In Docker the upload child is uid 0 with no capabilities on a read-only filesystem, and can still write `/tmp` and the data volume.
 - Uploaded PCAPs are parsed by Scapy, which is not hardened against hostile input. Size cap, extension check and generated filenames limit, but do not remove, that risk.
-- Models are loaded with `joblib`, which can execute code; only load models trained by this repo.
+- Models are loaded with `joblib`, which can execute code; a model whose sha256 is not pinned in `backend/features/feature_set.py` is refused before unpickling.
 
 ## Capture and Docker
 
@@ -79,5 +80,5 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 - **Features:** the full CICFlowMeter feature set computed by the same tool at training and run time (removes the flow-boundary and feature mismatch), plus cross-flow features (hosts contacted, ports per source) inside the model instead of one hand-written scan rule.
 - **Data and evaluation:** training data from the deployment network, a time-based split, and periodic retraining with threshold tuning on measured false-positive cost; the random split and 2017 lab traffic make the numbers here optimistic.
 - **Storage:** PostgreSQL or a time-series store with retention by age, instead of one SQLite file capped by row count.
-- **Access:** authentication, TLS and per-user audit on the API and WebSocket; today they rely on binding 127.0.0.1.
+- **Access:** per-user authentication, TLS and audit on the API and WebSocket; today they rely on one shared token and binding 127.0.0.1.
 - **Alert handling:** acknowledgement, suppression and tuning workflows, and export to a SIEM; this dashboard only displays alerts.

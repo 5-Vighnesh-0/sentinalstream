@@ -24,10 +24,11 @@ npm --prefix frontend ci
 ## 2. Start the backend (terminal 1)
 
 ```bash
-sudo .venv/bin/uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
+sudo setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups --inh-caps=+net_raw --ambient-caps=+net_raw \
+  .venv/bin/uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-Wait for `Application startup complete.` It captures on `lo` and serves the API on 127.0.0.1:8000 only.
+`$(id -u)` expands in your shell before `sudo`, so uvicorn runs as you with only `CAP_NET_RAW`, not as root. Wait for `Application startup complete.` It captures on `lo` and serves the API on 127.0.0.1:8000 only. It also prints `Dashboard token: …` to the terminal.
 
 ## 3. Start the dashboard (terminal 2)
 
@@ -35,7 +36,7 @@ Wait for `Application startup complete.` It captures on `lo` and serves the API 
 npm --prefix frontend run dev
 ```
 
-Open <http://localhost:3000>. The header says **Connected · capturing on lo** and a banner says you are in demo mode.
+Open <http://localhost:3000>. Paste the token printed in terminal 1 (also in `data/api-token`) into the dashboard once. The header says **Connected · capturing on lo** and a banner says you are in demo mode.
 
 ## 4. Run a port scan (terminal 3)
 
@@ -67,7 +68,8 @@ You will also see **Classifier** alerts for the same probes, such as **Medium ·
 | Symptom | Fix |
 |---|---|
 | Dashboard says "Reconnecting…" | The backend is not running, or not on port 8000. Check terminal 1. |
-| Backend log shows `PermissionError` and no alerts arrive | Capture needs root: start the backend with `sudo`. |
+| Backend log shows `PermissionError` and no alerts arrive | Capture needs `CAP_NET_RAW`: start the backend with the `setpriv` command in step 2. |
+| Dashboard shows "Paste the dashboard token" | No token is stored, or the stored one was rejected (for example after you deleted `data/api-token` and restarted). Paste the `Dashboard token:` line's value from terminal 1, or the contents of `data/api-token`. |
 | Header shows "Connected" but never "capturing on lo" | Wait 1–2 seconds for the first stats message; if it never appears, check terminal 1 for errors. |
 | `Port 3000 is in use` / `address already in use` | Stop whatever uses port 3000 or 8000; both ports are fixed. |
 | "No detection model is loaded" banner | The `models/` files are missing or changed; restore them with `git checkout models/`. |

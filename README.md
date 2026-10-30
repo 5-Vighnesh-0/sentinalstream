@@ -46,7 +46,7 @@ Linux with Docker Compose (host networking is what lets the backend capture the 
 docker compose up --build
 ```
 
-Open <http://localhost:3000>. To also run a port scan against your own machine once the backend is up:
+Open <http://localhost:3000> and paste the token from `docker compose logs backend` when the dashboard asks. To also run a port scan against your own machine once the backend is up:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
