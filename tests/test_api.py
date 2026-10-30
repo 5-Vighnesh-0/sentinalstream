@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from backend.api import main, uploads
+from backend.api import auth, main, uploads
 
 SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample.pcap"
 DASHBOARD = {"origin": "http://localhost:3000"}
@@ -19,7 +19,14 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("SENTINEL_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setattr(uploads, "UPLOAD_DIR", tmp_path / "uploads")
     with TestClient(main.create_app(capture=False), base_url="http://localhost") as c:
+        c.headers["Authorization"] = f"Bearer {c.app.state.token}"
         yield c
+
+
+def ws(client, origin="http://localhost:3000", token=None):
+    token = client.app.state.token if token is None else token
+    protocols = ["sentinelstream", token] if token else []
+    return client.websocket_connect("ws://localhost/ws/alerts", headers={"origin": origin}, subprotocols=protocols)
 
 
 def row(seconds, attack_type="anomaly", src="10.0.0.9"):
@@ -35,6 +42,14 @@ def wait_for(fn, timeout=30):
             return result
         time.sleep(0.2)
     raise AssertionError("condition not met in time")
+
+
+def test_root_outside_a_container_is_warned(monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv("SENTINEL_DB_PATH", str(tmp_path / "t.db"))
+    monkeypatch.setattr(main.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(main, "DOCKERENV", tmp_path / "absent")
+    main.create_app(capture=False)
+    assert "running as root" in caplog.text
 
 
 def test_health(client):
@@ -60,19 +75,73 @@ def test_alerts_query_filters_and_paginates(client):
 
 
 def test_websocket_rejects_foreign_origin(client):
-    with (pytest.raises(WebSocketDisconnect) as e,
-          client.websocket_connect("ws://localhost/ws/alerts", headers={"origin": "http://evil.example"}) as ws):
-        ws.receive_json()
+    with pytest.raises(WebSocketDisconnect) as e, ws(client, origin="http://evil.example") as s:
+        s.receive_json()
     assert e.value.code == 1008
 
 
 def test_websocket_receives_alert_published_from_another_thread(client):
-    with client.websocket_connect("ws://localhost/ws/alerts", headers=DASHBOARD) as ws:
+    with ws(client) as s:
         threading.Thread(target=client.app.state.hub.publish, args=(row(5),)).start()
-        message = ws.receive_json()
+        message = s.receive_json()
         while message["type"] != "alert":
-            message = ws.receive_json()
+            message = s.receive_json()
     assert (message["data"]["src_ip"], message["data"]["count"]) == ("10.0.0.9", 1)
+
+
+def test_alerts_and_upload_need_the_token(client):
+    assert client.get("/alerts", headers={"Authorization": ""}).status_code == 401
+    assert client.get("/alerts", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.get("/health", headers={"Authorization": ""}).status_code == 200
+    files = {"file": ("x.pcap", SAMPLE.read_bytes())}
+    assert client.post("/upload-pcap", files=files, headers={**UPLOAD_HEADERS, "Authorization": ""}).status_code == 401
+
+
+def test_websocket_needs_the_token_as_subprotocol(client):
+    for token in ("", "wrong"):
+        with pytest.raises(WebSocketDisconnect) as e, ws(client, token=token) as s:
+            s.receive_json()
+        assert e.value.code == 1008
+    with ws(client) as s:
+        assert s.accepted_subprotocol == "sentinelstream"
+
+
+def test_websocket_clients_are_capped(client, monkeypatch):
+    monkeypatch.setattr(main, "MAX_WS_CLIENTS", 1)
+    with ws(client):
+        with pytest.raises(WebSocketDisconnect) as e, ws(client) as second:
+            second.receive_json()
+        assert e.value.code == 1013
+
+
+def test_pruned_websocket_client_still_counts_against_the_cap(client, monkeypatch):
+    monkeypatch.setattr(main, "MAX_WS_CLIENTS", 1)
+    with ws(client):
+        client.app.state.hub.clients.clear()  # what sender() does to a slow client
+        with pytest.raises(WebSocketDisconnect) as e, ws(client) as second:
+            second.receive_json()
+        assert e.value.code == 1013
+    with ws(client):  # the slot is released once the first socket really closes
+        pass
+
+
+def test_token_file_is_owner_only_reused_and_rotatable(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DB_PATH", str(tmp_path / "data" / "t.db"))
+    first = main.create_app(capture=False).state.token
+    token_file = tmp_path / "data" / "api-token"
+    assert token_file.stat().st_mode & 0o777 == 0o600
+    assert main.create_app(capture=False).state.token == first
+    token_file.unlink()
+    assert main.create_app(capture=False).state.token != first
+
+
+def test_existing_data_dir_is_tightened_to_owner_only(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    data.mkdir(mode=0o775)
+    data.chmod(0o775)  # mkdir's mode is masked by the umask
+    monkeypatch.setenv("SENTINEL_DB_PATH", str(data / "t.db"))
+    main.create_app(capture=False)
+    assert data.stat().st_mode & 0o777 == 0o700
 
 
 def test_upload_needs_dashboard_origin_and_header(client):
@@ -116,3 +185,33 @@ def test_model_path_outside_models_dir_refused(monkeypatch, tmp_path):
     monkeypatch.setenv("SENTINEL_MODEL_PATH", str(tmp_path / "evil.joblib"))
     with pytest.raises(ValueError, match="must be under"):
         main.create_app(capture=False)
+
+
+def test_existing_sticky_dir_keeps_its_mode(tmp_path, monkeypatch):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o1777)
+    monkeypatch.setenv("SENTINEL_DB_PATH", str(shared / "t.db"))
+    main.create_app(capture=False)
+    assert shared.stat().st_mode & 0o7777 == 0o1777
+
+
+def test_from_subprotocols_only_accepts_exactly_sentinelstream_then_token():
+    assert auth.from_subprotocols("sentinelstream,  t ") == "t"
+    assert auth.from_subprotocols("sentinelstream, t, x") is None
+    assert auth.from_subprotocols("t, sentinelstream") is None
+    assert auth.from_subprotocols("sentinelstream") is None
+    assert auth.from_subprotocols("") is None
+    assert auth.from_subprotocols(None) is None
+
+
+def test_from_bearer_is_case_sensitive():
+    assert auth.from_bearer("Bearer t") == "t"
+    assert auth.from_bearer("bearer t") is None
+    assert auth.from_bearer(None) is None
+
+
+def test_empty_token_file_is_replaced(tmp_path):
+    (tmp_path / "api-token").write_text("")
+    token = auth.load_or_create_token(tmp_path)
+    assert token and (tmp_path / "api-token").read_text() == token

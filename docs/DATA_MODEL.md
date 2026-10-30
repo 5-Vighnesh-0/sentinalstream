@@ -153,4 +153,5 @@ models/random_forest.features.json
 |---|---|---|
 | `data/raw/cicids2017/MachineLearningCSV.zip`, `data/raw/cicids2017/MachineLearningCVE/*.csv` | CICIDS2017 MachineLearningCSV files (downloaded with approval) | No |
 | `data/sentinelstream.db` | SQLite DB | No |
+| `data/api-token` | Dashboard token, mode 600, in the same directory as the database | No |
 | `tests/fixtures/` | Tiny synthetic PCAP/CSV fixtures for tests (Phase 1+) | Yes |

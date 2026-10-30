@@ -37,6 +37,13 @@ SEVERITY_HIGH = 0.90
 SEVERITY_MEDIUM = 0.70
 ANOMALY_MEDIUM = 0.999  # Isolation-Forest-only alerts: above p99.9 of benign training scores
 
+# Models are pickles, which run code when loaded: load_model refuses any file not listed here.
+# After retraining, the trainers print the line to paste in.
+TRUSTED_MODEL_SHA256 = frozenset({
+    "bb2cd31c1e40f45ef07622b5a1771fa1b429920c6f7ebcaa4db3e6d9346c7025",  # models/random_forest.joblib
+    "df1aaacc4d8a73b375571d3505e7b6185b1827c947dff26f625a59f7766c9d92",  # models/isolation_forest.joblib
+})
+
 
 def packets_per_s(n_packets, duration_s):
     """Zero-duration rule: a flow with no measurable duration gets rate 0 (CICFlowMeter writes Infinity/NaN)."""
@@ -101,11 +108,15 @@ def save_model(model, model_path, **metadata) -> None:
     sidecar_path(model_path).write_text(json.dumps(meta, indent=2))
 
 
-def load_model(model_path):
-    """Load a model this repo trained; refuse it if the file doesn't match its sidecar or the feature order differs."""
+def load_model(model_path, trusted=TRUSTED_MODEL_SHA256):
+    """Load a model this repo trained: pinned hash, matching sidecar, matching feature order."""
     meta = json.loads(sidecar_path(model_path).read_text())
     if meta["feature_order"] != FEATURES:
         raise ValueError(f"{model_path}: feature order {meta['feature_order']} does not match {FEATURES}")
-    if meta.get("sha256") != file_sha256(model_path):
+    sha = file_sha256(model_path)
+    if meta.get("sha256") != sha:
         raise ValueError(f"{model_path}: file does not match the sha256 in its sidecar")
+    if sha not in trusted:
+        raise ValueError(f"{model_path}: not a trusted model (sha256 {sha}); "
+                         "add it to TRUSTED_MODEL_SHA256 in backend/features/feature_set.py after retraining")
     return joblib.load(model_path), meta

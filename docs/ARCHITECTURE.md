@@ -99,8 +99,8 @@ Untrusted inputs, all validated at the edge:
 |---|---|---|
 | Network packets | Malformed or adversarial packets; floods | Scapy parsing inside try/except; bounded queue with drop-oldest; no payload stored. |
 | Uploaded PCAP files | Oversized files, gzip bombs, path traversal, parser crashes, memory exhaustion | 50 MB cap enforced while streaming; extension must be `.pcap` or `.pcapng`; saved under a generated filename in a temp dir (client filename is never used as a path, only stored as display text); parse errors mark the batch `failed`. |
-| HTTP/WS clients | No auth; any browser tab can reach 127.0.0.1 | Backend binds `127.0.0.1:8000`; Host allowlist (DNS rebinding); WS Origin check (CORS doesn't cover WS); upload needs Origin + `X-Sentinel-Upload` header (CSRF); query parameters validated by Pydantic; SQL uses bound parameters only. See [API_SPEC.md](API_SPEC.md). |
-| Dataset CSVs / model files | `joblib` files execute code when loaded | Only models committed to `models/`; sha256 checked against the sidecar; `SENTINEL_MODEL_PATH` must resolve under `models/` (Phase 3); never from uploads or the network. |
+| HTTP/WS clients | Any browser tab or local program can reach 127.0.0.1 | Dashboard token (bearer header on REST, subprotocol on WS; `/health` open); backend binds `127.0.0.1:8000`; Host allowlist (DNS rebinding); WS Origin check (CORS doesn't cover WS); upload needs Origin + `X-Sentinel-Upload` header (CSRF); the dashboard's nginx sends a CSP, `X-Frame-Options: DENY`, nosniff and `Referrer-Policy: no-referrer`; query parameters validated by Pydantic; SQL uses bound parameters only. See [API_SPEC.md](API_SPEC.md). |
+| Dataset CSVs / model files | `joblib` files execute code when loaded | Only models committed to `models/`; sha256 pinned in code (`TRUSTED_MODEL_SHA256`; retraining prints the new pin line to paste in) and checked before unpickling; `SENTINEL_MODEL_PATH` must resolve under `models/` (Phase 3); never from uploads or the network. |
 
 Trusted: the host OS, the Python process, files under the repo root.
 

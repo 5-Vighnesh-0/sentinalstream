@@ -1,4 +1,5 @@
 """PCAP upload handling: untrusted files are parsed and scored in a separate, resource-limited process."""
+import ctypes
 import multiprocessing as mp
 import queue
 import re
@@ -14,6 +15,27 @@ UPLOAD_DIR = Path(tempfile.gettempdir()) / "sentinelstream-uploads"
 CHILD_MEMORY_BYTES = 2 * 1024**3  # address space: Python + scikit-learn + Scapy need a few hundred MB
 CHILD_CPU_S = 120
 CHILD_WALL_S = 180
+PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, PR_SET_NO_NEW_PRIVS = 47, 4, 38  # linux/prctl.h
+_CAP_VERSION_3 = 0x20080522  # linux/capability.h
+
+
+class _CapHeader(ctypes.Structure):
+    _fields_ = [("version", ctypes.c_uint32), ("pid", ctypes.c_int)]
+
+
+class _CapData(ctypes.Structure):
+    _fields_ = [("effective", ctypes.c_uint32), ("permitted", ctypes.c_uint32), ("inheritable", ctypes.c_uint32)]
+
+
+def drop_capabilities() -> None:
+    """Empty this process's capability sets (dropping needs no privilege): the parser must not keep CAP_NET_RAW."""
+    libc = ctypes.CDLL(None, use_errno=True)  # process symbols already include libc; find_library may spawn ldconfig/gcc
+    if libc.prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "prctl(PR_CAP_AMBIENT_CLEAR_ALL) failed")
+    if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:  # no setuid/file-cap regain
+        raise OSError(ctypes.get_errno(), "prctl(PR_SET_NO_NEW_PRIVS) failed")
+    if libc.capset(ctypes.byref(_CapHeader(_CAP_VERSION_3, 0)), (_CapData * 2)()) != 0:
+        raise OSError(ctypes.get_errno(), "capset failed")
 
 
 def sanitise_filename(name: str) -> str:
@@ -29,9 +51,10 @@ def reset_upload_dir() -> Path:
 
 
 def _child(path: str, model_path: str, out) -> None:
-    resource.setrlimit(resource.RLIMIT_AS, (CHILD_MEMORY_BYTES, CHILD_MEMORY_BYTES))
-    resource.setrlimit(resource.RLIMIT_CPU, (CHILD_CPU_S, CHILD_CPU_S))
     try:
+        drop_capabilities()  # first: a failed drop is reported and the upload fails closed
+        resource.setrlimit(resource.RLIMIT_AS, (CHILD_MEMORY_BYTES, CHILD_MEMORY_BYTES))
+        resource.setrlimit(resource.RLIMIT_CPU, (CHILD_CPU_S, CHILD_CPU_S))
         from backend.detection.detectors import Detectors  # imported after the limits apply
         from backend.features.flow_table import flows_from_pcap
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { API_URL } from "../config";
+import { authHeader } from "../token";
 
 const ERRORS: Record<number, string> = {
   403: "The backend refused the upload. Open the dashboard at http://localhost:3000.",
@@ -11,9 +12,11 @@ type Props = {
   batches: Record<number, string>;
   onUploaded: (batchId: number) => void;
   onView: (batchId: number) => void;
+  token: string;
+  onRejected: () => void;
 };
 
-export default function PCAPUpload({ batches, onUploaded, onView }: Props) {
+export default function PCAPUpload({ batches, onUploaded, onView, token, onRejected }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,7 +30,12 @@ export default function PCAPUpload({ batches, onUploaded, onView }: Props) {
       const body = new FormData();
       body.append("file", file);
       // The custom header makes the browser send a CORS preflight, which the backend checks (CSRF protection).
-      const response = await fetch(`${API_URL}/upload-pcap`, { method: "POST", body, headers: { "X-Sentinel-Upload": "1" } });
+      const response = await fetch(`${API_URL}/upload-pcap`, { method: "POST", body, headers: { ...authHeader(token), "X-Sentinel-Upload": "1" } });
+      if (response.status === 401) {
+        onRejected();
+        setError("The backend rejected the dashboard token.");
+        return;
+      }
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
         onUploaded(data.batch_id);

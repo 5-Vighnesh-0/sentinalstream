@@ -2,8 +2,8 @@
 
 Base URL: `http://127.0.0.1:8000` (the dashboard uses the IP, not `localhost`, so browsers never try `::1`). Implemented in Phase 3 (`backend/api/main.py`).
 
-- No authentication. The backend binds `127.0.0.1` only. See [ARCHITECTURE.md](ARCHITECTURE.md#trust-boundary).
-- CORS allows origins `http://localhost:3000` and `http://127.0.0.1:3000` only; never `*`.
+- Authentication: `GET /alerts` and `POST /upload-pcap` need `Authorization: Bearer <token>` → else **401**. The token (`secrets.token_urlsafe(32)`) is in `api-token` (mode 600) next to the database (`data/api-token` by default, i.e. `dirname(SENTINEL_DB_PATH)`) and printed to stderr at startup as `Dashboard token: … (stored in …; delete the file to rotate it)`; deleting the file and restarting rotates it. `/health` is open. The backend also binds `127.0.0.1` only. See [ARCHITECTURE.md](ARCHITECTURE.md#trust-boundary).
+- CORS allows origins `http://localhost:3000` and `http://127.0.0.1:3000` only, and the `Authorization` and `X-Sentinel-Upload` request headers; never `*`.
 - Host header must be `localhost` or `127.0.0.1` (TrustedHostMiddleware) → else **400**. Blocks DNS rebinding.
 - Errors use FastAPI's default shape: `{"detail": "..."}` (validation errors: `{"detail": [ ... ]}` with status 422).
 - Timestamps are ISO-8601 UTC strings. Field definitions are in [DATA_MODEL.md](DATA_MODEL.md).
@@ -97,7 +97,9 @@ Processing runs in the background PCAP worker. Alerts it produces carry the new 
 
 ## `WS /ws/alerts`
 
-Server → client JSON messages. Messages the client sends are ignored. The server closes the connection with code **1008** unless `Origin` is `http://localhost:3000` or `http://127.0.0.1:3000` (CORS does not protect WebSockets).
+Server → client JSON messages. Messages the client sends are ignored. The client offers the subprotocols `sentinelstream, <token>` and the server accepts `sentinelstream`. The server refuses the handshake unless `Origin` is `http://localhost:3000` or `http://127.0.0.1:3000` (CORS does not protect WebSockets) and the offered token is correct; it also refuses it when 20 clients are already connected. It refuses by closing before accept (code **1008** for Origin or token, **1013** for the client cap, as Starlette's test client reports them); uvicorn sends that to a real client as an **HTTP 403** handshake response.
+
+A browser sees a refused handshake only as close code 1006, so the dashboard detects a bad token through the 401 on `GET /alerts`, probing on load and after each failed reconnect.
 
 Every message has the shape `{"type": "...", "data": {...}}`.
 

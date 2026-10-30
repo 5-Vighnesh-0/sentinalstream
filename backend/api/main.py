@@ -8,18 +8,20 @@ import logging
 import os
 import queue
 import sqlite3
+import sys
 import threading
 import uuid
-from contextlib import asynccontextmanager, closing
+from contextlib import asynccontextmanager, closing, suppress
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 
 from backend.api import uploads
+from backend.api.auth import SUBPROTOCOL, TOKEN_FILE, from_bearer, from_subprotocols, load_or_create_token, matches
 from backend.api.uploads import analyse_upload, reset_upload_dir, sanitise_filename
 from backend.db.writer import ALERT_FIELDS, AlertAggregator, Writer, connect, now_iso
 from backend.features.extractor import check_capture_file
@@ -36,6 +38,8 @@ UPLOAD_BACKLOG = 2  # waiting; one more is processing
 MESSAGE_QUEUE_SIZE = 1_000
 STATS_EVERY_S = 1.0
 WS_SEND_TIMEOUT_S = 2.0
+DOCKERENV = Path("/.dockerenv")
+MAX_WS_CLIENTS = 20
 
 
 class Alert(BaseModel):
@@ -112,6 +116,11 @@ class UploadSizeLimit:
         await self.app(scope, limited_receive, send)
 
 
+async def close_quietly(ws: WebSocket) -> None:
+    with suppress(Exception):  # already closed
+        await ws.close(code=1013)
+
+
 class Hub:
     """Fans each alert out to SQLite and WebSocket clients, from any thread."""
 
@@ -121,7 +130,8 @@ class Hub:
         self.lock = threading.Lock()  # live inference and the upload worker both publish
         self.loop: asyncio.AbstractEventLoop | None = None
         self.messages: asyncio.Queue | None = None
-        self.clients: set[WebSocket] = set()
+        self.clients: set[WebSocket] = set()  # sockets the sender still serves
+        self.open_sockets: set[WebSocket] = set()  # every connection, for the cap
         self.dropped_messages = 0
         self.pipeline: Pipeline | None = None
 
@@ -147,8 +157,9 @@ class Hub:
             for ws in list(self.clients):
                 try:
                     await asyncio.wait_for(ws.send_json(message), WS_SEND_TIMEOUT_S)
-                except Exception:  # noqa: BLE001 - slow or gone: the dashboard reconnects and re-fetches GET /alerts
+                except Exception:  # noqa: BLE001 - slow or gone: close it so the dashboard reconnects and re-fetches GET /alerts
                     self.clients.discard(ws)
+                    asyncio.create_task(close_quietly(ws))
 
     async def stats(self, iface: str) -> None:
         last = 0
@@ -170,12 +181,24 @@ class Hub:
 
 
 def create_app(capture: bool = True) -> FastAPI:
+    os.umask(0o077)  # data/, the database and the token file are owner-only
+    if os.geteuid() == 0 and not DOCKERENV.exists():
+        log.warning("running as root: start uvicorn with only CAP_NET_RAW instead (see docs/DEMO.md)")
     db_path = repo_path("SENTINEL_DB_PATH", "data/sentinelstream.db")
+    token = load_or_create_token(db_path.parent)
+    # stderr, not logging: uvicorn's default config would hide an INFO line from this logger.
+    print(f"Dashboard token: {token} (stored in {db_path.parent / TOKEN_FILE}; delete the file to rotate it)",
+          file=sys.stderr, flush=True)
     model_path = resolve_model_path()
     iface = os.environ.get("SENTINEL_IFACE", "lo")
     hub = Hub(db_path)
     uploads_queue: queue.Queue = queue.Queue(maxsize=UPLOAD_BACKLOG)
     upload_lock = threading.Lock()
+
+    def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
+        if not matches(token, from_bearer(authorization)):
+            raise HTTPException(401, "Missing or wrong dashboard token")
+
     try:
         load_model(model_path)
         model_loaded = True
@@ -228,9 +251,10 @@ def create_app(capture: bool = True) -> FastAPI:
 
     app = FastAPI(title="SentinelStream", lifespan=lifespan)
     app.state.hub = hub
+    app.state.token = token
     app.state.uploads = uploads_queue
     app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"],
-                       allow_headers=["X-Sentinel-Upload"])
+                       allow_headers=["X-Sentinel-Upload", "Authorization"])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # blocks DNS rebinding
     app.add_middleware(UploadSizeLimit, limit=uploads.MAX_UPLOAD_BYTES)
 
@@ -238,7 +262,7 @@ def create_app(capture: bool = True) -> FastAPI:
     def health() -> Health:
         return Health(status="ok", model_loaded=model_loaded)
 
-    @app.get("/alerts")
+    @app.get("/alerts", dependencies=[Depends(require_token)])
     def list_alerts(
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
@@ -257,7 +281,7 @@ def create_app(capture: bool = True) -> FastAPI:
                                 "ORDER BY timestamp DESC LIMIT ? OFFSET ?", [*params, limit, offset]).fetchall()
         return AlertPage(items=[Alert(**dict(r)) for r in rows], total=total, limit=limit, offset=offset)
 
-    @app.post("/upload-pcap", status_code=202)
+    @app.post("/upload-pcap", status_code=202, dependencies=[Depends(require_token)])
     def upload_pcap(
         file: UploadFile,
         request: Request,
@@ -300,18 +324,25 @@ def create_app(capture: bool = True) -> FastAPI:
 
     @app.websocket("/ws/alerts")
     async def ws_alerts(websocket: WebSocket) -> None:
-        if websocket.headers.get("origin") not in ALLOWED_ORIGINS:  # CORS doesn't cover WebSockets
+        offered = from_subprotocols(websocket.headers.get("sec-websocket-protocol"))
+        # CORS doesn't cover WebSockets, and browsers can only send the token as a subprotocol.
+        if websocket.headers.get("origin") not in ALLOWED_ORIGINS or not matches(token, offered):
             await websocket.close(code=1008)
             return
-        await websocket.accept()
-        hub.clients.add(websocket)
+        if len(hub.open_sockets) >= MAX_WS_CLIENTS:  # counts every open socket, not just those the sender still serves
+            await websocket.close(code=1013)
+            return
+        hub.open_sockets.add(websocket)  # before accept, so in-flight handshakes count too
         try:
+            await websocket.accept(subprotocol=SUBPROTOCOL)
+            hub.clients.add(websocket)
             while True:
                 await websocket.receive_text()  # client messages are ignored
         except WebSocketDisconnect:
             pass
         finally:
             hub.clients.discard(websocket)
+            hub.open_sockets.discard(websocket)
 
     return app
 

@@ -857,3 +857,103 @@ run 40994657632 (CI) on e8c5db4: conclusion success
 - Base images were already in the local Docker cache (digest-pinned, so identical); a machine without them also downloads ~200 MB.
 - Leftover Docker volumes from the gate runs, not deleted: `sentinelstream_sentinel-data`, `sscheck_sentinel-data`, `sscheck2_sentinel-data`.
 - `ruff format` is not enforced (would reformat 25 files); CI runs `ruff check`.
+
+## Post-v1 sub-project 1 — Security hardening
+
+Branch `security-hardening`. Spec: [docs/superpowers/specs/2026-10-29-security-hardening-design.md](docs/superpowers/specs/2026-10-29-security-hardening-design.md). Plan: [docs/superpowers/plans/2026-10-30-security-hardening.md](docs/superpowers/plans/2026-10-30-security-hardening.md).
+
+### Tasks completed
+
+1. Model sha256 pinned in code (`TRUSTED_MODEL_SHA256`), checked before unpickling (6030e04).
+2. Upload parser child drops all capabilities; startup warning when the API runs as root outside Docker (969fd2d, 8494d11).
+3. Dashboard token for REST (Bearer) and WebSocket (subprotocol); umask 077; 20-client WebSocket cap (71b4877).
+4. Dashboard asks for the token once; bad tokens detected through the 401 on `GET /alerts`; malformed tokens refused (7f72206, 086ed54).
+5. nginx sends CSP, `X-Frame-Options: DENY`, nosniff, `Referrer-Policy: no-referrer`; Vite dev/preview send the last three (3d00ad2).
+6. Docs: token, `setpriv` least-privilege run, pinned models (2a78c06).
+7. Gate. Two fixes found during it: an existing `data/` (mode 775 here) is tightened to 700 at startup (7719757, human-approved); API_SPEC now says a refused WebSocket handshake is HTTP 403 on the wire, 1008/1013 being the codes Starlette's test client reports (1a97f20).
+
+### Evidence — local least-privilege run (DEMO step 2 `setpriv` command, password typed by the human)
+
+```text
+== 33264 sudo          Uid: 1000 0 0 0      CapEff: 000001ffffffffff   (sudo itself)
+== 33267 uvicorn       Uid: 1000 1000 1000 1000
+CapEff:	0000000000002000
+CapAmb:	0000000000002000
+0x0000000000002000=cap_net_raw
+```
+
+### Evidence — capability drop from a real starting point (step 1b)
+
+```text
+before [('Eff', '0000000000002000'), ('Amb', '0000000000002000')]
+after [('Eff', '0000000000000000'), ('Amb', '0000000000000000')]
+```
+
+### Evidence — negative checks against the running backend
+
+```text
+--- no token:        401
+--- wrong token:     401
+--- right token:     200
+--- health:          200
+--- ws without subprotocols:        InvalidStatus server rejected WebSocket connection: HTTP 403
+wrong token:                        InvalidStatus server rejected WebSocket connection: HTTP 403
+right token, bad origin:            InvalidStatus server rejected WebSocket connection: HTTP 403
+right token:                        accepted, subprotocol = sentinelstream
+--- modes:
+700 data
+600 data/api-token
+600 data/sentinelstream.db
+```
+
+### Evidence — dashboard in the built-in browser (dev server)
+
+- No stored token: form "Paste the dashboard token", header "Waiting for the dashboard token".
+- Wrong token saved: "The backend rejected that token." (socket never opens; detected via the REST 401).
+- Real token: header "Connected · capturing on lo"; after `simulator/simulate_attack.py portscan`, row `High 9:20:42 AM PortScan Port-scan rule 127.0.0.1:46188 → 127.0.0.1:19 100%`.
+
+### Evidence — Docker (`docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d`)
+
+- `docker compose logs backend` contains one `Dashboard token:` line; `curl -sI http://localhost:3000/` has the `Content-Security-Policy` header.
+- The browser still held the local run's token: on load the dashboard showed "The backend rejected that token." Pasting the container's token connected it.
+- After the simulator's port scan: `High 9:24:47 AM PortScan Port-scan rule 127.0.0.1:44706 → 127.0.0.1:20 100%`; the production bundle (`/assets/index-5XFxI0_Z.js`) and both Recharts charts rendered; console filtered for "Refused": no CSP violations.
+
+### Evidence — full checks (after 1a97f20)
+
+```text
+=== pytest
+97 passed, 1 warning in 20.21s
+=== ruff
+All checks passed!
+=== npm test
+ Test Files  3 passed (3)
+      Tests  21 passed (21)
+=== build
+✓ built in 436ms
+```
+
+### Gate verdict
+
+Local runs hold only `cap_net_raw` as the invoking user; the upload child ends with no capabilities; REST and WebSocket refuse a missing or wrong token; data files are owner-only; the dashboard recovers from a stale token and shows alerts with the CSP active in Docker.
+
+### Observations for later sub-projects
+
+- Detection quality: the classifier labels some scan flows BruteForce or WebAttack, and in Docker a second PortScan alert pointed at the DNS resolver (`127.0.0.1:33925 → 127.0.0.53:53`) 11 s after a scan.
+
+### Final whole-branch review (fa670d7)
+
+Verdict before fixes: "Ready after fixes". Fixed:
+
+- The startup `chmod 700` now touches only a data directory the process owns that is not sticky. Before this, `SENTINEL_DB_PATH=/tmp/x.db` under root would have chmodded `/tmp`.
+- The WebSocket cap now counts every open socket from before accept. Before, a client the sender dropped as slow stayed connected but freed its slot. The sender now also closes such clients with 1013 so the dashboard reconnects.
+- New unit tests cover the subprotocol and Bearer parsers and an empty token file.
+- The upload child now also sets `PR_SET_NO_NEW_PRIVS`.
+- DATA_MODEL now lists `api-token`. API_SPEC gives the token's real location (next to the database). LIMITATIONS notes that the upload body is read before the token check.
+
+Correction to the gate verdict above: step 1b ran `drop_capabilities()` in a standalone process started with `CAP_NET_RAW`, not inside a real upload child. Inside the child it is the first call; `tests/test_uploads.py` checks the child's sets, but it runs unprivileged, where they start empty.
+
+```text
+102 passed, 1 warning in 29.61s
+All checks passed!
+      Tests  21 passed (21)
+```
