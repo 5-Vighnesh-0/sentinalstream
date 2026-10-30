@@ -27,9 +27,21 @@ def test_slow_scan_outside_window_is_quiet():
     assert alerts(ScanDetector(), [flow(p, p * 1.0) for p in range(1, 26)]) == 0
 
 
-def test_long_scan_alerts_once_per_window():
-    assert alerts(ScanDetector(), [flow(p, p * 0.1) for p in range(1, 101)]) == 1  # 10 s of scanning
-    assert alerts(ScanDetector(), [flow(p, p * 0.1) for p in range(1, 301)]) == 3  # 30 s of scanning
+def test_long_scan_is_one_alert_per_burst():
+    assert alerts(ScanDetector(), [flow(p, p * 0.1) for p in range(1, 301)]) == 1  # 30 s of continuous scanning
+
+
+def test_scan_after_a_quiet_window_alerts_again():
+    first = [flow(p, p * 0.01) for p in range(1, 51)]
+    second = [flow(p, 30 + p * 0.01) for p in range(51, 101)]  # 28 s after the first burst ended
+    assert alerts(ScanDetector(), first + second) == 2
+
+
+def test_no_stale_refire_on_the_next_unrelated_flow():
+    # Phase 7 gate: 10.5 s after a 2 s scan, the host's next DNS lookup re-fired the rule on the stale window.
+    scan = [flow(p, p * 0.01) for p in range(1, 201)]
+    dns = [Flow("10.0.0.9", "10.0.0.53", 43837, 53, "UDP", 10.5 + i, 10.5 + i) for i in range(5)]
+    assert alerts(ScanDetector(), scan + dns) == 1
 
 
 def test_repeat_connections_to_one_port_are_not_a_scan():

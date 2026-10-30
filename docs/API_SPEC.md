@@ -1,6 +1,6 @@
 # API Specification
 
-Base URL: `http://localhost:8000`. Implemented in Phase 3 (`backend/api/main.py`).
+Base URL: `http://127.0.0.1:8000` (the dashboard uses the IP, not `localhost`, so browsers never try `::1`). Implemented in Phase 3 (`backend/api/main.py`).
 
 - No authentication. The backend binds `127.0.0.1` only. See [ARCHITECTURE.md](ARCHITECTURE.md#trust-boundary).
 - CORS allows origins `http://localhost:3000` and `http://127.0.0.1:3000` only; never `*`.

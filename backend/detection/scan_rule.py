@@ -12,10 +12,15 @@ class ScanDetector:
         self.window_s = window_s
         self.max_sources = max_sources
         self._recent: OrderedDict[str, deque] = OrderedDict()  # src_ip -> (ts, (dst_ip, dst_port)), oldest source first
-        self._last_alert: dict[str, float] = {}
+        self._quiet_until: dict[str, float] = {}  # src_ip -> end of its current alerted burst
 
     def observe(self, flow) -> bool:
-        """Feed flows in first_ts order. True means: raise one PortScan alert for flow.src_ip now."""
+        """Feed flows in first_ts order. True means: raise one PortScan alert for flow.src_ip now.
+
+        One alert per burst: after an alert, every new target the source touches extends its quiet period, so a
+        burst ends only after a full window with no new target, and a stale window can't re-fire on the next
+        unrelated flow (Phase 7 gate: a DNS lookup 10.5 s after a scan raised a second PortScan).
+        """
         if flow.protocol not in ("TCP", "UDP"):
             return False
         ts, src = float(flow.first_ts), flow.src_ip
@@ -24,14 +29,17 @@ class ScanDetector:
         self._recent[src] = recent
         if len(self._recent) > self.max_sources:
             evicted, _ = self._recent.popitem(last=False)
-            self._last_alert.pop(evicted, None)
-        recent.append((ts, (flow.dst_ip, flow.dst_port)))
-        while recent[0][0] < ts - self.window_s:
+            self._quiet_until.pop(evicted, None)
+        target = (flow.dst_ip, flow.dst_port)
+        while recent and recent[0][0] < ts - self.window_s:
             recent.popleft()
-        if len({target for _, target in recent}) < self.min_ports:
+        is_new = all(t != target for _, t in recent)
+        recent.append((ts, target))
+        if ts < self._quiet_until.get(src, float("-inf")):
+            if is_new:
+                self._quiet_until[src] = ts + self.window_s  # still scanning: same burst
             return False
-        last = self._last_alert.get(src)
-        if last is not None and ts - last < self.window_s:
+        if len({t for _, t in recent}) < self.min_ports:
             return False
-        self._last_alert[src] = ts
+        self._quiet_until[src] = ts + self.window_s
         return True
