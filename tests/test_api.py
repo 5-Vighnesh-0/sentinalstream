@@ -37,6 +37,13 @@ def wait_for(fn, timeout=30):
     raise AssertionError("condition not met in time")
 
 
+def test_root_outside_a_container_is_warned(monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv("SENTINEL_DB_PATH", str(tmp_path / "t.db"))
+    monkeypatch.setattr(main.os, "geteuid", lambda: 0)
+    main.create_app(capture=False)
+    assert "running as root" in caplog.text
+
+
 def test_health(client):
     assert client.get("/health").json() == {"status": "ok", "model_loaded": True}
 

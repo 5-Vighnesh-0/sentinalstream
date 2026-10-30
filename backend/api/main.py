@@ -170,6 +170,8 @@ class Hub:
 
 
 def create_app(capture: bool = True) -> FastAPI:
+    if os.geteuid() == 0 and not Path("/.dockerenv").exists():
+        log.warning("running as root: start uvicorn with only CAP_NET_RAW instead (see docs/DEMO.md)")
     db_path = repo_path("SENTINEL_DB_PATH", "data/sentinelstream.db")
     model_path = resolve_model_path()
     iface = os.environ.get("SENTINEL_IFACE", "lo")
