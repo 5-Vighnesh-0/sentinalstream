@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import AlertFeed, { type AlertItem } from "./AlertFeed";
+import AlertFeed, { type AlertItem, evidence } from "./AlertFeed";
 
 const severities = ["high", "medium", "low"] as const;
 
@@ -50,4 +50,20 @@ test("severity and attack-type filters narrow the list", () => {
 test("upload view labels the time column as capture time", () => {
   render(<AlertFeed alerts={makeAlerts(1)} captureTime={true} />);
   expect(screen.getByRole("columnheader", { name: "Capture time" })).toBeTruthy();
+});
+
+test("evidence never shows an unmeasured percentage", () => {
+  const [a] = makeAlerts(1);
+  expect(evidence({ ...a, source: "rule", confidence: 1 })[0]).toBe("rule match");
+  expect(evidence({ ...a, source: "isolation_forest", confidence: 0.9969 })).toEqual(["rarer than 99.6%", "Anomaly score above 99.6% of normal training flows"]);
+  expect(evidence({ ...a, source: "isolation_forest", confidence: 1 })[0]).toBe("rarer than all");
+  expect(evidence({ ...a, source: "random_forest", confidence: 0.8 })[0]).toBe("80% probability");
+});
+
+test("rows are ordered by latest activity, not first seen", () => {
+  const [a, b] = makeAlerts(2);
+  const older = { ...a, attack_type: "Older", timestamp: "2026-10-29T12:00:00.000Z", last_seen: "2026-10-29T12:00:05.000Z" };
+  const updated = { ...b, attack_type: "Updated", timestamp: "2026-10-29T11:59:00.000Z", last_seen: "2026-10-29T12:01:00.000Z" };
+  render(<AlertFeed alerts={[older, updated]} captureTime={false} />);
+  expect(bodyRows().map((row) => within(row).queryByText(/Older|Updated/)?.textContent)).toEqual(["Updated", "Older"]);
 });
