@@ -12,3 +12,4 @@ def test_drop_capabilities_empties_every_set():
     assert result.returncode == 0, result.stderr
     caps = dict(line.split(":\t") for line in result.stdout.splitlines() if line.startswith("Cap"))
     assert int(caps["CapEff"], 16) == int(caps["CapPrm"], 16) == int(caps["CapAmb"], 16) == int(caps["CapInh"], 16) == 0
+    assert "NoNewPrivs:\t1" in result.stdout

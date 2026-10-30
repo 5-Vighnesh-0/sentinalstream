@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from backend.api import main, uploads
+from backend.api import auth, main, uploads
 
 SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample.pcap"
 DASHBOARD = {"origin": "http://localhost:3000"}
@@ -114,6 +114,17 @@ def test_websocket_clients_are_capped(client, monkeypatch):
         assert e.value.code == 1013
 
 
+def test_pruned_websocket_client_still_counts_against_the_cap(client, monkeypatch):
+    monkeypatch.setattr(main, "MAX_WS_CLIENTS", 1)
+    with ws(client):
+        client.app.state.hub.clients.clear()  # what sender() does to a slow client
+        with pytest.raises(WebSocketDisconnect) as e, ws(client) as second:
+            second.receive_json()
+        assert e.value.code == 1013
+    with ws(client):  # the slot is released once the first socket really closes
+        pass
+
+
 def test_token_file_is_owner_only_reused_and_rotatable(tmp_path, monkeypatch):
     monkeypatch.setenv("SENTINEL_DB_PATH", str(tmp_path / "data" / "t.db"))
     first = main.create_app(capture=False).state.token
@@ -174,3 +185,33 @@ def test_model_path_outside_models_dir_refused(monkeypatch, tmp_path):
     monkeypatch.setenv("SENTINEL_MODEL_PATH", str(tmp_path / "evil.joblib"))
     with pytest.raises(ValueError, match="must be under"):
         main.create_app(capture=False)
+
+
+def test_existing_sticky_dir_keeps_its_mode(tmp_path, monkeypatch):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o1777)
+    monkeypatch.setenv("SENTINEL_DB_PATH", str(shared / "t.db"))
+    main.create_app(capture=False)
+    assert shared.stat().st_mode & 0o7777 == 0o1777
+
+
+def test_from_subprotocols_only_accepts_exactly_sentinelstream_then_token():
+    assert auth.from_subprotocols("sentinelstream,  t ") == "t"
+    assert auth.from_subprotocols("sentinelstream, t, x") is None
+    assert auth.from_subprotocols("t, sentinelstream") is None
+    assert auth.from_subprotocols("sentinelstream") is None
+    assert auth.from_subprotocols("") is None
+    assert auth.from_subprotocols(None) is None
+
+
+def test_from_bearer_is_case_sensitive():
+    assert auth.from_bearer("Bearer t") == "t"
+    assert auth.from_bearer("bearer t") is None
+    assert auth.from_bearer(None) is None
+
+
+def test_empty_token_file_is_replaced(tmp_path):
+    (tmp_path / "api-token").write_text("")
+    token = auth.load_or_create_token(tmp_path)
+    assert token and (tmp_path / "api-token").read_text() == token

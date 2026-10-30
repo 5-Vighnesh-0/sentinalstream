@@ -2,7 +2,7 @@
 
 Base URL: `http://127.0.0.1:8000` (the dashboard uses the IP, not `localhost`, so browsers never try `::1`). Implemented in Phase 3 (`backend/api/main.py`).
 
-- Authentication: `GET /alerts` and `POST /upload-pcap` need `Authorization: Bearer <token>` → else **401**. The token (`secrets.token_urlsafe(32)`) is in `data/api-token` (mode 600) and printed to stderr at startup as `Dashboard token: … (stored in …; delete the file to rotate it)`; deleting the file and restarting rotates it. `/health` is open. The backend also binds `127.0.0.1` only. See [ARCHITECTURE.md](ARCHITECTURE.md#trust-boundary).
+- Authentication: `GET /alerts` and `POST /upload-pcap` need `Authorization: Bearer <token>` → else **401**. The token (`secrets.token_urlsafe(32)`) is in `api-token` (mode 600) next to the database (`data/api-token` by default, i.e. `dirname(SENTINEL_DB_PATH)`) and printed to stderr at startup as `Dashboard token: … (stored in …; delete the file to rotate it)`; deleting the file and restarting rotates it. `/health` is open. The backend also binds `127.0.0.1` only. See [ARCHITECTURE.md](ARCHITECTURE.md#trust-boundary).
 - CORS allows origins `http://localhost:3000` and `http://127.0.0.1:3000` only, and the `Authorization` and `X-Sentinel-Upload` request headers; never `*`.
 - Host header must be `localhost` or `127.0.0.1` (TrustedHostMiddleware) → else **400**. Blocks DNS rebinding.
 - Errors use FastAPI's default shape: `{"detail": "..."}` (validation errors: `{"detail": [ ... ]}` with status 422).

@@ -1,6 +1,7 @@
 """Dashboard token: one random secret in the data directory, required by the REST API and the WebSocket."""
 import os
 import secrets
+import stat
 from pathlib import Path
 
 TOKEN_FILE = "api-token"
@@ -11,7 +12,9 @@ def load_or_create_token(data_dir: Path) -> str:
     """Reuse the token across restarts; delete the file to rotate it."""
     path = data_dir / TOKEN_FILE
     data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    data_dir.chmod(0o700)  # a data/ made before this release may be group/world readable
+    st = data_dir.stat()
+    if st.st_uid == os.geteuid() and not st.st_mode & stat.S_ISVTX:  # never chmod a shared dir like /tmp
+        data_dir.chmod(0o700)  # a data/ made before this release may be group/world readable
     if path.exists() and (token := path.read_text().strip()):
         return token
     token = secrets.token_urlsafe(32)

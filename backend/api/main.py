@@ -11,7 +11,7 @@ import sqlite3
 import sys
 import threading
 import uuid
-from contextlib import asynccontextmanager, closing
+from contextlib import asynccontextmanager, closing, suppress
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -116,6 +116,11 @@ class UploadSizeLimit:
         await self.app(scope, limited_receive, send)
 
 
+async def close_quietly(ws: WebSocket) -> None:
+    with suppress(Exception):  # already closed
+        await ws.close(code=1013)
+
+
 class Hub:
     """Fans each alert out to SQLite and WebSocket clients, from any thread."""
 
@@ -125,7 +130,8 @@ class Hub:
         self.lock = threading.Lock()  # live inference and the upload worker both publish
         self.loop: asyncio.AbstractEventLoop | None = None
         self.messages: asyncio.Queue | None = None
-        self.clients: set[WebSocket] = set()
+        self.clients: set[WebSocket] = set()  # sockets the sender still serves
+        self.open_sockets: set[WebSocket] = set()  # every connection, for the cap
         self.dropped_messages = 0
         self.pipeline: Pipeline | None = None
 
@@ -151,8 +157,9 @@ class Hub:
             for ws in list(self.clients):
                 try:
                     await asyncio.wait_for(ws.send_json(message), WS_SEND_TIMEOUT_S)
-                except Exception:  # noqa: BLE001 - slow or gone: the dashboard reconnects and re-fetches GET /alerts
+                except Exception:  # noqa: BLE001 - slow or gone: close it so the dashboard reconnects and re-fetches GET /alerts
                     self.clients.discard(ws)
+                    asyncio.create_task(close_quietly(ws))
 
     async def stats(self, iface: str) -> None:
         last = 0
@@ -322,18 +329,20 @@ def create_app(capture: bool = True) -> FastAPI:
         if websocket.headers.get("origin") not in ALLOWED_ORIGINS or not matches(token, offered):
             await websocket.close(code=1008)
             return
-        if len(hub.clients) >= MAX_WS_CLIENTS:
+        if len(hub.open_sockets) >= MAX_WS_CLIENTS:  # counts every open socket, not just those the sender still serves
             await websocket.close(code=1013)
             return
-        await websocket.accept(subprotocol=SUBPROTOCOL)
-        hub.clients.add(websocket)
+        hub.open_sockets.add(websocket)  # before accept, so in-flight handshakes count too
         try:
+            await websocket.accept(subprotocol=SUBPROTOCOL)
+            hub.clients.add(websocket)
             while True:
                 await websocket.receive_text()  # client messages are ignored
         except WebSocketDisconnect:
             pass
         finally:
             hub.clients.discard(websocket)
+            hub.open_sockets.discard(websocket)
 
     return app
 

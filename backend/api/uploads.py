@@ -15,7 +15,7 @@ UPLOAD_DIR = Path(tempfile.gettempdir()) / "sentinelstream-uploads"
 CHILD_MEMORY_BYTES = 2 * 1024**3  # address space: Python + scikit-learn + Scapy need a few hundred MB
 CHILD_CPU_S = 120
 CHILD_WALL_S = 180
-PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL = 47, 4  # linux/prctl.h
+PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, PR_SET_NO_NEW_PRIVS = 47, 4, 38  # linux/prctl.h
 _CAP_VERSION_3 = 0x20080522  # linux/capability.h
 
 
@@ -32,6 +32,8 @@ def drop_capabilities() -> None:
     libc = ctypes.CDLL(None, use_errno=True)  # process symbols already include libc; find_library may spawn ldconfig/gcc
     if libc.prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), "prctl(PR_CAP_AMBIENT_CLEAR_ALL) failed")
+    if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:  # no setuid/file-cap regain
+        raise OSError(ctypes.get_errno(), "prctl(PR_SET_NO_NEW_PRIVS) failed")
     if libc.capset(ctypes.byref(_CapHeader(_CAP_VERSION_3, 0)), (_CapData * 2)()) != 0:
         raise OSError(ctypes.get_errno(), "capset failed")
 

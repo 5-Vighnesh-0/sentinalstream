@@ -50,6 +50,7 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 ## Trust boundary and security
 
 - The REST and WebSocket API need a dashboard token, but it is a single shared secret: no users, no expiry, and anyone who can read `data/api-token` has it. The backend still binds `127.0.0.1:8000`; do not expose it on a network.
+- The multipart body of `POST /upload-pcap` is read (up to the 50 MB cap) before the token is checked, so any web page can make the backend spool a file to temp before the 401.
 - Local runs drop root via `setpriv` (see [DEMO.md](DEMO.md)), and the upload parser child drops all capabilities. In Docker the upload child is uid 0 with no capabilities on a read-only filesystem, and can still write `/tmp` and the data volume.
 - Uploaded PCAPs are parsed by Scapy, which is not hardened against hostile input. Size cap, extension check and generated filenames limit, but do not remove, that risk.
 - Models are loaded with `joblib`, which can execute code; a model whose sha256 is not pinned in `backend/features/feature_set.py` is refused before unpickling.
