@@ -939,3 +939,21 @@ Local runs hold only `cap_net_raw` as the invoking user; the upload child ends w
 ### Observations for later sub-projects
 
 - Detection quality: the classifier labels some scan flows BruteForce or WebAttack, and in Docker a second PortScan alert pointed at the DNS resolver (`127.0.0.1:33925 → 127.0.0.53:53`) 11 s after a scan.
+
+### Final whole-branch review (fa670d7)
+
+Verdict before fixes: "Ready after fixes". Fixed:
+
+- The startup `chmod 700` now touches only a data directory the process owns that is not sticky. Before this, `SENTINEL_DB_PATH=/tmp/x.db` under root would have chmodded `/tmp`.
+- The WebSocket cap now counts every open socket from before accept. Before, a client the sender dropped as slow stayed connected but freed its slot. The sender now also closes such clients with 1013 so the dashboard reconnects.
+- New unit tests cover the subprotocol and Bearer parsers and an empty token file.
+- The upload child now also sets `PR_SET_NO_NEW_PRIVS`.
+- DATA_MODEL now lists `api-token`. API_SPEC gives the token's real location (next to the database). LIMITATIONS notes that the upload body is read before the token check.
+
+Correction to the gate verdict above: step 1b ran `drop_capabilities()` in a standalone process started with `CAP_NET_RAW`, not inside a real upload child. Inside the child it is the first call; `tests/test_uploads.py` checks the child's sets, but it runs unprivileged, where they start empty.
+
+```text
+102 passed, 1 warning in 29.61s
+All checks passed!
+      Tests  21 passed (21)
+```
