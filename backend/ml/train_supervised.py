@@ -15,7 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # allow `python backend/ml/train_supervised.py`
 
-from backend.features.feature_set import FEATURES, save_model
+from backend.features.feature_set import FEATURES, file_sha256, save_model
 from backend.ml import cicids, train_baseline
 
 RF_OUT = "models/random_forest.joblib"
@@ -46,6 +46,7 @@ def main(argv=None) -> None:
     rf = train_rf(train)
     save_model(rf, RF_OUT, classes=list(rf.classes_), params=RF_PARAMS, n_train_rows=len(train),
                trained_on="CICIDS2017 MachineLearningCSV, all 8 files, training split", dataset=report)
+    print(f'pin for TRUSTED_MODEL_SHA256: "{file_sha256(RF_OUT)}",  # {RF_OUT}')
     print(f"random forest: {time.monotonic() - started:.0f} s, {Path(RF_OUT).stat().st_size:,} bytes -> {RF_OUT}")
 
     benign = train[train["label"] == "BENIGN"]
@@ -54,6 +55,7 @@ def main(argv=None) -> None:
     save_model(iforest, IF_OUT, n_train_rows=len(sample), random_state=cicids.RANDOM_STATE,
                trained_on="CICIDS2017 MachineLearningCSV, all 8 files, benign rows of the training split",
                dataset=report, **scoring)
+    print(f'pin for TRUSTED_MODEL_SHA256: "{file_sha256(IF_OUT)}",  # {IF_OUT}')
     print(f"isolation forest: threshold {scoring['threshold']:.4f}, {Path(IF_OUT).stat().st_size:,} bytes -> {IF_OUT}")
 
 

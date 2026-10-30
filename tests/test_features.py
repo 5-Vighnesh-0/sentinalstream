@@ -1,12 +1,23 @@
+import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from backend.features.feature_set import FEATURES, from_cicids, load_model, packets_per_s, save_model, severity
+from backend.features.feature_set import (
+    FEATURES,
+    TRUSTED_MODEL_SHA256,
+    file_sha256,
+    from_cicids,
+    load_model,
+    packets_per_s,
+    save_model,
+    severity,
+)
 from backend.features.flow_table import flows_from_pcap
 
+REPO = Path(__file__).resolve().parents[1]
 SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample.pcap"
 
 
@@ -74,18 +85,33 @@ def test_from_cicids_cleans_and_maps():
 def test_load_model_rejects_wrong_feature_order(tmp_path):
     path = tmp_path / "m.joblib"
     save_model({"dummy": True}, path)
-    _, meta = load_model(path)
+    trusted = {file_sha256(path)}
+    _, meta = load_model(path, trusted=trusted)
     assert meta["feature_order"] == FEATURES
 
     sidecar = tmp_path / "m.features.json"
     sidecar.write_text(sidecar.read_text().replace('"fwd_packets"', '"renamed"'))
     with pytest.raises(ValueError, match="feature order"):
-        load_model(path)
+        load_model(path, trusted=trusted)
 
 
 def test_load_model_rejects_tampered_file(tmp_path):
     path = tmp_path / "m.joblib"
     save_model({"dummy": True}, path)
+    trusted = {file_sha256(path)}
     path.write_bytes(path.read_bytes() + b"\0")
     with pytest.raises(ValueError, match="sha256"):
+        load_model(path, trusted=trusted)
+
+
+def test_untrusted_model_refused_before_unpickling(tmp_path):
+    path = tmp_path / "m.joblib"
+    save_model({"dummy": True}, path)
+    with pytest.raises(ValueError, match="not a trusted model"):
         load_model(path)
+
+
+def test_committed_models_are_pinned():
+    for name in ("random_forest", "isolation_forest"):
+        sha = json.loads((REPO / "models" / f"{name}.features.json").read_text())["sha256"]
+        assert sha in TRUSTED_MODEL_SHA256, f"{name}: retrained? paste its pin into TRUSTED_MODEL_SHA256"

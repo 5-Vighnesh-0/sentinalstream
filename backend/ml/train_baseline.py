@@ -15,7 +15,7 @@ from sklearn.preprocessing import FunctionTransformer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # allow `python backend/ml/train_baseline.py`
 
-from backend.features.feature_set import CICIDS_NEEDED, FEATURES, from_cicids, save_model
+from backend.features.feature_set import CICIDS_NEEDED, FEATURES, file_sha256, from_cicids, save_model
 
 DEFAULT_OUT = "models/isolation_forest.joblib"
 RANDOM_STATE = 42
@@ -82,6 +82,7 @@ def main(argv=None) -> None:
         sys.exit("no BENIGN rows found in the given CSV(s)")
     model, scoring = train(X)
     save_model(model, args.out, trained_on=args.csv, n_train_rows=len(X), random_state=RANDOM_STATE, **stats, **scoring)
+    print(f'pin for TRUSTED_MODEL_SHA256: "{file_sha256(args.out)}",  # {args.out}')
     print(f"read {stats['rows_read']} rows, dropped {stats['rows_dropped_invalid']} invalid, "
           f"{stats['benign_rows']} benign; trained on {len(X)}; saved {args.out}")
 
