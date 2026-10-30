@@ -124,6 +124,15 @@ def test_token_file_is_owner_only_reused_and_rotatable(tmp_path, monkeypatch):
     assert main.create_app(capture=False).state.token != first
 
 
+def test_existing_data_dir_is_tightened_to_owner_only(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    data.mkdir(mode=0o775)
+    data.chmod(0o775)  # mkdir's mode is masked by the umask
+    monkeypatch.setenv("SENTINEL_DB_PATH", str(data / "t.db"))
+    main.create_app(capture=False)
+    assert data.stat().st_mode & 0o777 == 0o700
+
+
 def test_upload_needs_dashboard_origin_and_header(client):
     files = {"file": ("x.pcap", SAMPLE.read_bytes())}
     assert client.post("/upload-pcap", files=files).status_code == 403
