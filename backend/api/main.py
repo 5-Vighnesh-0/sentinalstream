@@ -1,0 +1,319 @@
+"""SentinelStream API: REST + WebSocket over the live pipeline, SQLite persistence and PCAP uploads.
+
+Run (live capture needs root or CAP_NET_RAW; without it the API still serves history and uploads):
+  sudo .venv/bin/uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
+"""
+import asyncio
+import logging
+import os
+import queue
+import sqlite3
+import threading
+import uuid
+from contextlib import asynccontextmanager, closing
+from pathlib import Path
+from typing import Annotated, Literal
+
+from fastapi import FastAPI, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from pydantic import BaseModel
+
+from backend.api import uploads
+from backend.api.uploads import analyse_upload, reset_upload_dir, sanitise_filename
+from backend.db.writer import ALERT_FIELDS, AlertAggregator, Writer, connect, now_iso
+from backend.features.extractor import check_capture_file
+from backend.features.feature_set import load_model
+from backend.pipeline import Pipeline
+
+log = logging.getLogger("sentinelstream.api")
+
+REPO = Path(__file__).resolve().parents[2]
+MODELS_DIR = (REPO / "models").resolve()
+ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
+UPLOAD_BACKLOG = 2  # waiting; one more is processing
+MESSAGE_QUEUE_SIZE = 1_000
+STATS_EVERY_S = 1.0
+WS_SEND_TIMEOUT_S = 2.0
+
+
+class Alert(BaseModel):
+    id: str
+    timestamp: str
+    src_ip: str
+    dst_ip: str
+    src_port: int
+    dst_port: int
+    protocol: str
+    attack_type: str
+    confidence: float
+    severity: str
+    source: str
+    count: int
+    last_seen: str
+    batch_id: int | None
+    flow_id: str | None
+
+
+class AlertPage(BaseModel):
+    items: list[Alert]
+    total: int
+    limit: int
+    offset: int
+
+
+class Health(BaseModel):
+    status: str
+    model_loaded: bool
+
+
+class UploadAccepted(BaseModel):
+    batch_id: int
+    status: str
+
+
+def repo_path(env: str, default: str) -> Path:
+    path = Path(os.environ.get(env, default))
+    return (path if path.is_absolute() else REPO / path).resolve()
+
+
+def resolve_model_path() -> Path:
+    """SENTINEL_MODEL_PATH must point inside models/: joblib files run code when loaded."""
+    path = repo_path("SENTINEL_MODEL_PATH", "models/random_forest.joblib")
+    if not path.is_relative_to(MODELS_DIR):
+        raise ValueError(f"SENTINEL_MODEL_PATH must be under {MODELS_DIR}, got {path}")
+    if not path.exists() and path.name == "random_forest.joblib":
+        path = MODELS_DIR / "isolation_forest.joblib"  # live default until Phase 5 trains the Random Forest
+    return path
+
+
+class UploadSizeLimit:
+    """Reject upload bodies over the cap while they stream in, before anything reaches disk."""
+
+    def __init__(self, app, limit: int):
+        self.app = app
+        self.limit = limit
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["path"] != "/upload-pcap":
+            return await self.app(scope, receive, send)
+        limit = self.limit + 64 * 1024  # multipart headers and boundaries
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            received += len(message.get("body", b""))
+            if received > limit:
+                raise HTTPException(413, f"File exceeds {self.limit // (1024 * 1024)} MB limit")
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+
+class Hub:
+    """Fans each alert out to SQLite and WebSocket clients, from any thread."""
+
+    def __init__(self, db_path: Path):
+        self.writer = Writer(db_path)
+        self.aggregator = AlertAggregator()
+        self.lock = threading.Lock()  # live inference and the upload worker both publish
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.messages: asyncio.Queue | None = None
+        self.clients: set[WebSocket] = set()
+        self.dropped_messages = 0
+        self.pipeline: Pipeline | None = None
+
+    def publish(self, row: dict, batch_id: int | None = None) -> None:
+        with self.lock:
+            alert, flow = self.aggregator.add(row, batch_id)
+        self.writer.submit(alert, flow)
+        self.send_threadsafe({"type": "alert", "data": alert})
+
+    def send_threadsafe(self, message: dict) -> None:
+        self.loop.call_soon_threadsafe(self.enqueue, message)
+
+    def enqueue(self, message: dict) -> None:
+        """Runs on the event loop. A full queue drops the message rather than blocking inference."""
+        try:
+            self.messages.put_nowait(message)
+        except asyncio.QueueFull:
+            self.dropped_messages += 1
+
+    async def sender(self) -> None:
+        while True:
+            message = await self.messages.get()
+            for ws in list(self.clients):
+                try:
+                    await asyncio.wait_for(ws.send_json(message), WS_SEND_TIMEOUT_S)
+                except Exception:  # slow or gone: the dashboard reconnects and re-fetches GET /alerts
+                    self.clients.discard(ws)
+
+    async def stats(self, iface: str) -> None:
+        last = 0
+        while True:
+            await asyncio.sleep(STATS_EVERY_S)
+            p = self.pipeline
+            packets = p.stats["packets"] if p else 0
+            self.enqueue({"type": "stats", "data": {
+                "timestamp": now_iso(),
+                "packets_per_s": (packets - last) / STATS_EVERY_S,
+                "active_flows": len(p.table) if p else 0,
+                "dropped_packets": p.capture.dropped if p else 0,
+                "kernel_dropped_packets": p.capture.kernel_dropped() if p else 0,
+                "dropped_flows": p.stats["dropped_flows"] if p else 0,
+                "dropped_alerts": self.dropped_messages + self.writer.dropped,
+                "iface": iface,
+            }})
+            last = packets
+
+
+def create_app(capture: bool = True) -> FastAPI:
+    db_path = repo_path("SENTINEL_DB_PATH", "data/sentinelstream.db")
+    model_path = resolve_model_path()
+    iface = os.environ.get("SENTINEL_IFACE", "lo")
+    hub = Hub(db_path)
+    uploads_queue: queue.Queue = queue.Queue(maxsize=UPLOAD_BACKLOG)
+    upload_lock = threading.Lock()
+    try:
+        load_model(model_path)
+        model_loaded = True
+    except (OSError, ValueError) as e:
+        log.error("no usable model at %s: %s", model_path, e)
+        model_loaded = False
+
+    def set_batch_status(batch_id: int, status: str) -> None:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
+            conn.execute("UPDATE upload_batches SET status = ? WHERE id = ?", (status, batch_id))
+        hub.send_threadsafe({"type": "batch", "data": {"batch_id": batch_id, "status": status}})
+
+    def upload_worker() -> None:
+        while (job := uploads_queue.get()) is not None:
+            batch_id, path = job
+            set_batch_status(batch_id, "processing")
+            try:
+                for row in analyse_upload(path, model_path):
+                    hub.publish(row, batch_id)
+                status = "done"
+            except Exception:
+                log.exception("upload batch %d failed", batch_id)
+                status = "failed"
+            finally:
+                path.unlink(missing_ok=True)
+            set_batch_status(batch_id, status)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        with closing(connect(db_path)) as conn, conn:
+            conn.execute("UPDATE upload_batches SET status = 'failed' WHERE status IN ('pending', 'processing')")
+        reset_upload_dir()
+        hub.loop = asyncio.get_running_loop()
+        hub.messages = asyncio.Queue(maxsize=MESSAGE_QUEUE_SIZE)
+        hub.writer.start()
+        worker = threading.Thread(target=upload_worker, name="upload-worker", daemon=True)
+        worker.start()
+        if capture and model_loaded:
+            hub.pipeline = Pipeline(iface, model_path, on_alert=hub.publish)
+            hub.pipeline.start()
+        tasks = [asyncio.create_task(hub.sender()), asyncio.create_task(hub.stats(iface))]
+        yield
+        if hub.pipeline:
+            await asyncio.to_thread(hub.pipeline.stop)
+        uploads_queue.put(None)
+        await asyncio.to_thread(worker.join, 5)
+        await asyncio.to_thread(hub.writer.stop)
+        for task in tasks:
+            task.cancel()
+
+    app = FastAPI(title="SentinelStream", lifespan=lifespan)
+    app.state.hub = hub
+    app.state.uploads = uploads_queue
+    app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"],
+                       allow_headers=["X-Sentinel-Upload"])
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # blocks DNS rebinding
+    app.add_middleware(UploadSizeLimit, limit=uploads.MAX_UPLOAD_BYTES)
+
+    @app.get("/health")
+    def health() -> Health:
+        return Health(status="ok", model_loaded=model_loaded)
+
+    @app.get("/alerts")
+    def list_alerts(
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        severity: Annotated[Literal["low", "medium", "high"] | None, Query()] = None,
+        attack_type: Annotated[str | None, Query(max_length=32)] = None,
+        batch_id: Annotated[int | None, Query(ge=1)] = None,
+    ) -> AlertPage:
+        filters = {"severity": severity, "attack_type": attack_type, "batch_id": batch_id}
+        where = [f"{column} = ?" for column, value in filters.items() if value is not None]
+        params = [value for value in filters.values() if value is not None]
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+            conn.row_factory = sqlite3.Row
+            total = conn.execute(f"SELECT COUNT(*) FROM alerts {clause}", params).fetchone()[0]
+            rows = conn.execute(f"SELECT {', '.join(ALERT_FIELDS)} FROM alerts {clause} "
+                                "ORDER BY timestamp DESC LIMIT ? OFFSET ?", [*params, limit, offset]).fetchall()
+        return AlertPage(items=[Alert(**dict(r)) for r in rows], total=total, limit=limit, offset=offset)
+
+    @app.post("/upload-pcap", status_code=202)
+    def upload_pcap(
+        file: UploadFile,
+        request: Request,
+        x_sentinel_upload: Annotated[str | None, Header()] = None,
+    ) -> UploadAccepted:
+        # A plain multipart POST needs no CORS preflight, so check the origin and a custom header ourselves (CSRF).
+        if request.headers.get("origin") not in ALLOWED_ORIGINS or x_sentinel_upload != "1":
+            raise HTTPException(403, "Uploads must come from the dashboard")
+        ext = Path(file.filename or "").suffix.lower()
+        if ext not in uploads.EXTENSIONS:
+            raise HTTPException(400, "File must be .pcap or .pcapng")
+        path = uploads.UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"  # never the client's filename
+        written = 0
+        with path.open("wb") as out:
+            while chunk := file.file.read(1024 * 1024):
+                written += len(chunk)
+                if written > uploads.MAX_UPLOAD_BYTES:
+                    break
+                out.write(chunk)
+        if written > uploads.MAX_UPLOAD_BYTES:
+            path.unlink()
+            raise HTTPException(413, f"File exceeds {uploads.MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit")
+        try:
+            check_capture_file(path)
+        except ValueError:
+            path.unlink()
+            raise HTTPException(400, "Not a pcap/pcapng file")
+        with upload_lock:
+            if uploads_queue.full():
+                path.unlink()
+                raise HTTPException(429, "Too many uploads in progress")
+            with closing(sqlite3.connect(db_path)) as conn, conn:
+                batch_id = conn.execute(
+                    "INSERT INTO upload_batches (filename, uploaded_at, status) VALUES (?, ?, 'pending')",
+                    (sanitise_filename(file.filename), now_iso()),
+                ).lastrowid
+            uploads_queue.put_nowait((batch_id, path))
+        log.info("upload batch %d queued: %r", batch_id, sanitise_filename(file.filename))
+        return UploadAccepted(batch_id=batch_id, status="pending")
+
+    @app.websocket("/ws/alerts")
+    async def ws_alerts(websocket: WebSocket) -> None:
+        if websocket.headers.get("origin") not in ALLOWED_ORIGINS:  # CORS doesn't cover WebSockets
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        hub.clients.add(websocket)
+        try:
+            while True:
+                await websocket.receive_text()  # client messages are ignored
+        except WebSocketDisconnect:
+            pass
+        finally:
+            hub.clients.discard(websocket)
+
+    return app
+
+
+app = create_app()

@@ -14,7 +14,7 @@ import queue
 import sys
 import threading
 import time
-from collections import Counter
+from collections import Counter, deque
 from pathlib import Path
 
 from scapy.sendrecv import sniff as scapy_sniff
@@ -45,7 +45,7 @@ class Pipeline:
         self.detectors = Detectors(model_path)
         self.clock = clock
         self.on_alert = on_alert or (lambda alert: None)
-        self.alerts: list[dict] = []
+        self.alerts: deque[dict] = deque(maxlen=10_000)  # recent alerts only; the API persists them to SQLite
         self.stats = Counter()
         self.max_delay_s = 0.0  # flow end -> scored, includes the idle/FIN wait by design
         self._stop = threading.Event()
