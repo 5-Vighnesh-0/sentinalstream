@@ -9,7 +9,8 @@ export default function AttackDistribution({ alerts }: { alerts: AlertItem[] }) 
 
   return (
     <section className="rounded-lg border border-hairline bg-surface p-4">
-      <h2 className="mb-2 text-lg font-semibold">Attack types</h2>
+      <h2 className="text-lg font-semibold">Attack types</h2>
+      <p className="mb-2 text-sm text-muted">Detections in the latest {alerts.length.toLocaleString("en-US")} alerts of this view.</p>
       {data.length === 0 ? (
         <p className="py-4 text-sm text-muted">No detections in this view yet.</p>
       ) : (

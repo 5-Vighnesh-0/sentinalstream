@@ -7,12 +7,18 @@ import TrafficChart, { type TrafficPoint } from "./components/TrafficChart";
 import { API_URL, TRAFFIC_WINDOW_S, WS_URL } from "./config";
 import { useWebSocket } from "./useWebSocket";
 
-const KEPT_ALERTS = 1000; // in memory; the feed renders at most 200
+const KEPT_ALERTS = 1000; // per view, in memory; the feed renders at most 200
 
-/** Newest activity first; an aggregated update (same id, higher count) replaces the old copy. */
-function upsert(list: AlertItem[], incoming: AlertItem[]): AlertItem[] {
+/** Newest activity first; an aggregated update (same id, higher count) replaces the old copy.
+ *  The cap is per view (live, each upload) so a busy live stream never evicts an upload's alerts. */
+export function upsert(list: AlertItem[], incoming: AlertItem[]): AlertItem[] {
   const ids = new Set(incoming.map((a) => a.id));
-  return [...incoming, ...list.filter((a) => !ids.has(a.id))].slice(0, KEPT_ALERTS);
+  const kept = new Map<number | null, number>();
+  return [...incoming, ...list.filter((a) => !ids.has(a.id))].filter((a) => {
+    const n = (kept.get(a.batch_id) ?? 0) + 1;
+    kept.set(a.batch_id, n);
+    return n <= KEPT_ALERTS;
+  });
 }
 
 export default function App() {
@@ -68,7 +74,8 @@ export default function App() {
         </p>
       </header>
       <Banners status={status} iface={iface} modelLoaded={modelLoaded} />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-sm text-muted">
             View

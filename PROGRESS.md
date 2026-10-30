@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **Phase 4 — in progress**
+Current phase: **Phase 4 — awaiting `phase 4 accepted`**
 
 Phase 3 (and the corrected Phase 2) accepted ("Accept Phase 3") on 2026-10-29 and pushed.
 
@@ -494,3 +494,63 @@ None.
 ### Notes
 
 - Starlette's test client warns that `httpx` is deprecated in favour of `httpx2`; `httpx` is the approved dependency, so it stays.
+
+---
+
+## Phase 4 — Dashboard
+
+Plan: [plans/phase-4-PLAN.md](plans/phase-4-PLAN.md)
+
+### Tasks completed
+
+- [x] Dependencies: react 18.3.1, react-dom 18.3.1, recharts 3.10.1; dev: vite 8.3.5, tailwindcss 4.3.3, vitest 5.0.5, jsdom 30.1.3, @testing-library/react 16.3.3 (approved), plus @tailwindcss/vite 4.3.3, @vitejs/plugin-react 6.1.2, @testing-library/dom 10.4.2 (approved by the human in Phase 4; no TypeScript)
+- [x] Skills used: `frontend-design` (design plan: light-only palette, system fonts, severity bar as the one bold element), `dataviz` (status palette for severity with text labels, single-series line without legend, one-hue magnitude bars with tip labels, tooltips, no animation on live updates)
+- [x] `frontend/` Vite + Tailwind on port 3000 (`vite.config.js`), `useWebSocket` (backoff 1 s → 30 s, reset after open), `AlertFeed` (latest 200, severity + type filters, "Capture time" in upload views), `TrafficChart` (60 s), `AttackDistribution`, `PCAPUpload` (custom header, plain-language errors), banners (demo mode on `lo`, no model loaded, connection lost) — `ba3e572`
+- [x] Bugs found in the browser and fixed: page 682 px wide in a 377 px viewport (grid column grew to the table; `grid-cols-1`); alert cap shared by all views let live alerts evict upload alerts (attack chart showed 999 of 1,000; cap is now per view, test added); narrow-column title collision
+- [x] Tests: 10 Vitest (hook backoff/reset/unmount/parsing, feed cap/filters/labels, per-view cap); 58 pytest
+
+### Evidence — gate (built-in browser, backend `sudo timeout 600 uvicorn` with live capture on `lo`, commit after ba3e572)
+
+Alert latency, loopback connect scan of 40 ports (bash timestamps vs a MutationObserver in the page, same clock):
+
+```text
+scan_start_ms 1793324301104
+first PortScan row in the DOM 1793324301854   -> 750 ms
+row: "High 9:38:21 PM PortScan Port-scan rule 127.0.0.1:56908 → 127.0.0.1:20 100%"
+```
+
+Traffic chart redraws (ms between consecutive line updates): `[750, 1000, 1000, 1000]` (first gap partial); 60 points in the 60 s window.
+
+1,000 alerts (upload of a synthetic 1,000-scanner PCAP through `POST /upload-pcap`, 1,000 alerts in SQLite and over the WebSocket):
+
+```text
+{"status": "Showing 200 of 1,000", "rows": 200, "timeHeader": "Capture time", "filterToPaintMs": 43, "resetToPaintMs": 60}
+after the per-view cap fix: {"barLabels": ["1000"], "caption": "Detections in the latest 1,000 alerts of this view.", "status": "Showing 200 of 1,000"}
+```
+
+Layout: 377 px viewport → scrollWidth 362 (no horizontal scroll); 1280 px → two columns 800/400 px, title and value do not overlap.
+
+### Evidence — checks
+
+```text
+$ npm --prefix frontend test
+ Test Files  3 passed (3)
+      Tests  10 passed (10)
+$ npm --prefix frontend run build
+dist/assets/index-TsBtvkzQ.js   526.24 kB │ gzip: 156.45 kB
+✓ built in 485ms
+$ grep -rn dangerouslySetInnerHTML frontend/src || echo none
+none
+$ .venv/bin/pytest -q
+58 passed, 1 warning in 15.24s
+```
+
+### Gate verdict
+
+With the backend capturing on `lo` and a loopback scan running, a new alert appeared in 750 ms (< 2 s); the traffic chart redraws every 1,000 ms; with 1,000 alerts a filter change paints in 43–60 ms and the feed renders 200 rows. "No model loaded" banner, upload alerts under their own view with "Capture time", and no `dangerouslySetInnerHTML` are in place.
+
+### Notes
+
+- Bundle is 526 kB (156 kB gzip), mostly Recharts; local dashboard, not split.
+- Past uploads are not listed after a reload (no list endpoint; documented in LIMITATIONS.md).
+- `.claude/launch.json` (local preview config) is git-ignored.

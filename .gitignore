@@ -12,3 +12,6 @@ frontend/dist/
 # Datasets and databases stay local (large, licence-gated). Trained models are committed (D3).
 data/*
 !data/.gitkeep
+
+# Local tool config
+.claude/

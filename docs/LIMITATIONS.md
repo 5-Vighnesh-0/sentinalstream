@@ -62,6 +62,7 @@ Consequence: benchmark numbers describe the models on CICIDS2017 CSV features, n
 - Alerts are broadcast before the batched insert, so up to 2 s of already-shown alerts can be missing from SQLite after a crash.
 - Uploaded PCAP alerts keep the capture's original timestamps.
 - One upload is processed at a time, two can wait; more get 429.
+- The dashboard keeps at most 1,000 alerts per view in memory and renders the latest 200; older ones are in SQLite (`GET /alerts`). Past uploads are not listed after a page reload: there is no endpoint that lists upload batches, so an earlier upload's alerts are reachable only through `GET /alerts?batch_id=`.
 - Privacy: on a real interface, alerts store IP addresses, which are personal data in many jurisdictions. Keep `data/` local; CI never uploads it.
 
 ## What production would change (to be expanded in Phase 7)

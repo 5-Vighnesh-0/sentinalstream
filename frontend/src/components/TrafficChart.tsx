@@ -7,7 +7,7 @@ export default function TrafficChart({ points }: { points: TrafficPoint[] }) {
   const latest = points.length ? points[points.length - 1].pps : null;
   return (
     <section className="rounded-lg border border-hairline bg-surface p-4">
-      <div className="mb-2 flex items-baseline justify-between">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 className="text-lg font-semibold">Packets per second</h2>
         <span className="text-sm text-muted">{latest === null ? "waiting for data" : `${Math.round(latest).toLocaleString()} now`}</span>
       </div>
