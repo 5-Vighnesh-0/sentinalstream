@@ -15,3 +15,6 @@ data/*
 
 # Local tool config
 .claude/
+
+# impeccable working files (review captures, sketches, critique snapshots); DESIGN.md and PRODUCT.md are the record
+.impeccable/
