@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import AlertDetail from "./components/AlertDetail";
-import AlertFeed, { type AlertItem } from "./components/AlertFeed";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AlertFeed, { clockTime, type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
 import InEffectStrip from "./components/InEffectStrip";
@@ -39,7 +38,7 @@ export default function App() {
   const [rejected, setRejected] = useState(false);
   const [view, setView] = useState<number | null>(null); // null = live traffic, else an upload batch id
   const [severity, setSeverity] = useState("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeOnly, setActiveOnly] = useState(false); // the strip filters to what it counts: in effect only
   const [changed, setChanged] = useState<Map<string, "new" | "updated">>(new Map());
   const [announcement, setAnnouncement] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -95,7 +94,7 @@ export default function App() {
     } else if (message.type === "stats") {
       setIface(message.data.iface);
       setLastStatAt(Date.now());
-      const time = new Date(message.data.timestamp).toLocaleTimeString();
+      const time = clockTime(message.data.timestamp);
       setTraffic((prev) => [...prev, { time, pps: message.data.packets_per_s }].slice(-TRAFFIC_WINDOW_S));
     } else if (message.type === "batch") {
       const { batch_id: id, status } = message.data;
@@ -105,10 +104,13 @@ export default function App() {
 
   const status = useWebSocket(token && !rejected ? WS_URL : null, { onMessage, onOpen, onClose: () => loadAlerts(null) }, ["sentinelstream", token]);
   const stale = status === "open" && lastStatAt !== null && now - lastStatAt > STALE_AFTER_MS;
-  const live = alerts.filter((a) => a.batch_id === null);
-  const visible = view === null ? live : alerts.filter((a) => a.batch_id === view);
-  const selected = visible.find((a) => a.id === selectedId) ?? null;
-  const highInEffect = live.filter((a) => a.severity === "high" && inEffect(a, now)).length;
+  // While no data arrives, "in effect" is judged at the last data, so a dead connection never decays into an all-clear.
+  const frozen = stale || (status === "reconnecting" && lastStatAt !== null);
+  const clock = frozen ? lastStatAt! : now;
+  // Stable lists between ticks, so memoised children only re-render when alerts change, not every second.
+  const live = useMemo(() => alerts.filter((a) => a.batch_id === null), [alerts]);
+  const visible = useMemo(() => (view === null ? live : alerts.filter((a) => a.batch_id === view)), [alerts, live, view]);
+  const highInEffect = live.filter((a) => a.severity === "high" && inEffect(a, clock)).length;
   const locked = !token || rejected;
 
   useEffect(() => {
@@ -123,9 +125,13 @@ export default function App() {
 
   function viewBatch(batchId: number | null) {
     setView(batchId);
-    setSeverity("all");
-    setSelectedId(null);
+    filter("all", false);
     if (batchId !== null) loadAlerts(batchId);
+  }
+
+  function filter(level: string, onlyActive: boolean) {
+    setSeverity(level);
+    setActiveOnly(onlyActive);
   }
 
   const seen = useCallback((id: string) => {
@@ -155,8 +161,8 @@ export default function App() {
   return (
     <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-hairline pb-3">
-        <h1 className="text-lg font-bold tracking-tight">SentinelStream</h1>
-        {!locked && (
+        <h1 className="text-[22px] font-bold tracking-tight">SentinelStream</h1>
+        {!locked && tabs.length > 1 && (
           <div role="tablist" aria-label="View" className="flex max-w-full gap-1 overflow-x-auto">
             {tabs.map(([id, label], i) => (
               <button
@@ -168,7 +174,7 @@ export default function App() {
                 onClick={() => viewBatch(id)}
                 onKeyDown={(e) => onTabKey(e, i)}
                 title={label}
-                className={`max-w-48 truncate rounded-md px-3 py-1.5 text-sm font-medium ${view === id ? "bg-ink text-white" : "text-muted hover:bg-sunk hover:text-ink"}`}
+                className={`max-w-48 truncate rounded-md px-3 py-1.5 text-sm font-medium ${view === id ? "bg-accent text-white" : "text-muted hover:bg-sunk hover:text-ink"}`}
               >
                 {label}
               </button>
@@ -185,28 +191,27 @@ export default function App() {
       <Banners status={status} modelLoaded={modelLoaded} />
       <p aria-live="polite" className="sr-only">{announcement}</p>
       <main className="space-y-4">
-        {!locked && <InEffectStrip alerts={visible} now={now} capture={view !== null} severity={severity} onSeverity={setSeverity} />}
+        {!locked && (
+          <InEffectStrip alerts={visible} clock={clock} frozen={frozen} capture={view !== null} severity={severity} activeOnly={activeOnly} onFilter={filter} />
+        )}
         {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="space-y-4">
             {locked ? (
               <TokenForm onSave={saveNewToken} rejected={rejected} />
             ) : (
-              <>
-                {selected && <AlertDetail alert={selected} now={now} onClose={() => setSelectedId(null)} />}
-                <AlertFeed
-                  key={view ?? "live"}
-                  alerts={visible}
-                  captureTime={view !== null}
-                  now={now}
-                  severity={severity}
-                  onSeverity={setSeverity}
-                  changed={changed}
-                  onSeen={seen}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                />
-              </>
+              <AlertFeed
+                key={view ?? "live"}
+                alerts={visible}
+                captureTime={view !== null}
+                clock={clock}
+                frozen={frozen}
+                severity={severity}
+                activeOnly={activeOnly}
+                onFilter={filter}
+                changed={changed}
+                onSeen={seen}
+              />
             )}
           </div>
           <div className="space-y-4">

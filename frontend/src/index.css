@@ -46,6 +46,16 @@ body {
   color: var(--color-ink);
 }
 
+html {
+  accent-color: var(--color-accent);
+  caret-color: var(--color-accent);
+  scrollbar-color: var(--color-edge) var(--color-page);
+}
+
+.feed-scroll {
+  scrollbar-color: var(--color-edge) var(--color-surface);
+}
+
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -54,14 +64,6 @@ body {
 p,
 li {
   text-wrap: pretty;
-}
-
-@keyframes arrived {
-  from { background-color: var(--color-changed); }
-}
-
-.row-arrived {
-  animation: arrived 1.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes pulse-dot {
@@ -73,6 +75,5 @@ li {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .row-arrived,
   .dot-live { animation: none; }
 }

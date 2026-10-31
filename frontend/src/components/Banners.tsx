@@ -10,7 +10,7 @@ export default function Banners({ status, modelLoaded }: Props) {
       {status === "reconnecting" && (
         <p role="status" className="flex items-center gap-2 rounded-md bg-sunk px-3 py-2 text-sm ring-1 ring-edge">
           <WifiOff aria-hidden size={16} className="shrink-0" />
-          Lost the connection to the backend at localhost:8000. Reconnecting automatically; the feed and chart are paused.
+          Lost the connection to the backend at 127.0.0.1:8000. Reconnecting automatically; the feed and chart are paused.
         </p>
       )}
       {modelLoaded === false && (

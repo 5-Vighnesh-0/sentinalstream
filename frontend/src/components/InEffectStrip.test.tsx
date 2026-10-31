@@ -9,12 +9,13 @@ const NOW = Date.parse("2026-10-29T12:00:30.000Z");
 const alert = (id: string, severity: AlertItem["severity"], last_seen: string, batch_id: number | null = null) =>
   ({ id, severity, last_seen, batch_id, count: 1 }) as AlertItem;
 
-function Strip({ alerts, capture = false }: { alerts: AlertItem[]; capture?: boolean }) {
+function Strip({ alerts, capture = false, frozen = false }: { alerts: AlertItem[]; capture?: boolean; frozen?: boolean }) {
   const [severity, setSeverity] = useState("all");
+  const [activeOnly, setActiveOnly] = useState(false);
   return (
     <>
-      <InEffectStrip alerts={alerts} now={NOW} capture={capture} severity={severity} onSeverity={setSeverity} />
-      <output data-testid="filter">{severity}</output>
+      <InEffectStrip alerts={alerts} clock={NOW} frozen={frozen} capture={capture} severity={severity} activeOnly={activeOnly} onFilter={(s, a) => { setSeverity(s); setActiveOnly(a); }} />
+      <output data-testid="filter">{`${severity}${activeOnly ? ":in-effect" : ""}`}</output>
     </>
   );
 }
@@ -36,7 +37,7 @@ test("a level block filters the feed and pressing it again clears the filter", (
   render(<Strip alerts={live} />);
   const high = screen.getByRole("button", { name: /High 1/ });
   fireEvent.click(high);
-  expect(screen.getByTestId("filter").textContent).toBe("high");
+  expect(screen.getByTestId("filter").textContent).toBe("high:in-effect"); // shows exactly what it counted
   expect(high.getAttribute("aria-pressed")).toBe("true");
   fireEvent.click(high);
   expect(screen.getByTestId("filter").textContent).toBe("all");
@@ -54,4 +55,10 @@ test("a wrong file is refused before upload", () => {
   Object.defineProperty(big, "size", { value: 51 * 1024 * 1024 });
   expect(checkFile(big)).toBe("That file is larger than 50 MB.");
   expect(checkFile(new File(["x"], "ok.PCAPNG"))).toBe("");
+});
+
+test("while no data arrives the strip says the counts are held, not current", () => {
+  render(<Strip alerts={live} frozen />);
+  expect(screen.getByRole("heading").textContent).toMatch(/^In effect as of /);
+  expect(screen.getByText("No new data: counts are held until the connection is back")).toBeTruthy();
 });

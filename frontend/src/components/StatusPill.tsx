@@ -32,7 +32,7 @@ export default function StatusPill({ status, iface, pps, lastStatAt, now, stale 
     look = "bg-live-tint text-live";
     icon = <span aria-hidden className="dot-live inline-block size-2 rounded-full bg-live" />;
     state = "Live";
-    text = ["Live", iface && `capturing on ${iface}`, pps !== null && `${Math.round(pps).toLocaleString()} packets/s`].filter(Boolean).join(" · ");
+    text = ["Live", iface && `capturing on ${iface}`, pps !== null && `${Math.round(pps).toLocaleString()} packets/s`, lastStatAt && `data ${ago(now - lastStatAt)}`].filter(Boolean).join(" · ");
   }
   return (
     <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${look}`}>

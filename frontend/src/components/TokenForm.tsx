@@ -6,7 +6,7 @@ export default function TokenForm({ onSave, rejected }: { onSave: (token: string
   const [malformed, setMalformed] = useState(false);
   return (
     <section className="rounded-lg border border-hairline bg-surface p-6">
-      <h2 className="text-base font-semibold">Paste the dashboard token</h2>
+      <h2 className="text-lg font-semibold">Paste the dashboard token</h2>
       <p className="mt-1 text-sm text-muted">
         The backend prints it when it starts and keeps it in <code className="font-mono text-[13px]">data/api-token</code> (with Docker: <code className="font-mono text-[13px]">docker compose logs backend</code>).
       </p>

@@ -74,7 +74,7 @@ export default function PCAPUpload({ batches, onUploaded, token, onRejected }: P
   const ids = Object.keys(batches).map(Number).sort((a, b) => b - a);
   return (
     <section className="rounded-lg border border-hairline bg-surface p-4" aria-labelledby="upload-heading">
-      <h2 id="upload-heading" className="text-base font-semibold">Analyse a capture file</h2>
+      <h2 id="upload-heading" className="text-lg font-semibold">Analyse a capture file</h2>
       <p className="mt-1 text-sm text-muted">Its alerts open in their own tab, apart from live traffic.</p>
       <form onSubmit={upload} className="mt-3 space-y-3">
         <div

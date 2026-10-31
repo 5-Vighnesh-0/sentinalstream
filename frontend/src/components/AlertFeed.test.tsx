@@ -7,18 +7,19 @@ const NOW = Date.parse("2026-10-29T12:00:10.000Z");
 
 function Feed({ alerts, captureTime = false, changed = new Map() }: { alerts: AlertItem[]; captureTime?: boolean; changed?: Map<string, "new" | "updated"> }) {
   const [severity, setSeverity] = useState("all");
+  const [activeOnly, setActiveOnly] = useState(false);
   const [held, setHeld] = useState(changed);
   return (
     <AlertFeed
       alerts={alerts}
       captureTime={captureTime}
-      now={NOW}
+      clock={NOW}
+      frozen={false}
       severity={severity}
-      onSeverity={setSeverity}
+      activeOnly={activeOnly}
+      onFilter={(s, a) => { setSeverity(s); setActiveOnly(a); }}
       changed={held}
       onSeen={(id) => setHeld((m) => { const n = new Map(m); n.delete(id); return n; })}
-      selectedId={null}
-      onSelect={() => {}}
     />
   );
 }
@@ -44,13 +45,13 @@ function makeAlerts(n: number): AlertItem[] {
   }));
 }
 
-const bodyRows = () => within(screen.getAllByRole("rowgroup")[1]).queryAllByRole("row");
+const bodyRows = () => within(screen.getAllByRole("rowgroup")[1]).queryAllByRole("row").filter((r) => !r.textContent?.startsWith("Expired:"));
 
 test("renders at most the latest 200 of 1,000 alerts", () => {
   render(<Feed alerts={makeAlerts(1000)} />);
   expect(bodyRows()).toHaveLength(200);
   expect(screen.getByText(/showing 200 of 1,000/i)).toBeTruthy();
-});
+}, 20_000); // jsdom draws 400 SVG icons slowly; the browser render is measured live
 
 test("severity is written out, not only a colour", () => {
   render(<Feed alerts={makeAlerts(3)} />);
@@ -95,8 +96,9 @@ test("an alert is in effect for 30 s after its last activity, then expired", () 
   const old = { ...b, last_seen: "2026-10-29T11:59:30.000Z" }; // 40 s before NOW
   render(<Feed alerts={[fresh, old]} />);
   const [first, second] = bodyRows();
-  expect(within(first).getByText("in effect · 20 s")).toBeTruthy();
-  expect(within(second).getByText("expired")).toBeTruthy();
+  expect(within(first).getByText("20 s left")).toBeTruthy();
+  expect(within(second).queryByText(/s left/)).toBeNull();
+  expect(screen.getByText("Expired: no activity for 30 s")).toBeTruthy(); // one divider between in effect and history
 });
 
 test("a changed row stays marked until it is looked at", () => {
@@ -104,11 +106,23 @@ test("a changed row stays marked until it is looked at", () => {
   render(<Feed alerts={[a]} changed={new Map([[a.id, "updated" as const]])} />);
   const row = bodyRows()[0];
   expect(within(row).getByText("Updated")).toBeTruthy();
-  fireEvent.mouseEnter(row);
+  fireEvent.focus(within(row).getByRole("button"));
   expect(within(row).queryByText("Updated")).toBeNull();
 });
 
 test("IPv6 endpoints are bracketed", () => {
   expect(endpoint("::1", 52362)).toBe("[::1]:52362");
   expect(endpoint("10.0.0.1", 80)).toBe("10.0.0.1:80");
+});
+
+test("details open under the row and Escape closes them, returning focus to the row", () => {
+  const [a] = makeAlerts(1);
+  render(<Feed alerts={[a]} />);
+  const button = screen.getByRole("button", { name: /details$/ });
+  fireEvent.click(button);
+  const heading = screen.getByRole("heading", { name: /details$/ });
+  expect(document.activeElement).toBe(heading);
+  fireEvent.keyDown(heading, { key: "Escape" });
+  expect(screen.queryByRole("heading", { name: /details$/ })).toBeNull();
+  expect(document.activeElement).toBe(button);
 });
