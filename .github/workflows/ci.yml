@@ -66,3 +66,26 @@ jobs:
       - run: pip-audit --strict --require-hashes -r requirements.txt
       - run: npm audit --audit-level=high
         working-directory: frontend
+
+  trivy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -f backend/Dockerfile -t sentinelstream-backend .
+      - run: docker build -t sentinelstream-frontend frontend
+      # Fail only on HIGH/CRITICAL that have a fix: unfixable upstream CVEs would turn CI red with nothing to do.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: sentinelstream-backend
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: sentinelstream-frontend
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          skip-setup-trivy: true
