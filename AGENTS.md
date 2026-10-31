@@ -57,6 +57,8 @@ Approved by the human in Phase 0: python-multipart, httpx, uvicorn[standard], ru
 
 Approved by the human in Phase 4: @tailwindcss/vite, @vitejs/plugin-react, @testing-library/dom (no typescript: .tsx is transpiled, not type-checked).
 
+Approved by the human for the dashboard redesign (post-v1): self-hosted font packages (@fontsource / @fontsource-variable), lucide-react.
+
 Anything else: ask first.
 
 ## Logging progress

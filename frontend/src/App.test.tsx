@@ -110,3 +110,31 @@ test("a malformed stored token yields the form, not a crash", () => {
   expect(screen.getByText("Paste the dashboard token")).toBeTruthy();
   expect(FakeWS.count).toBe(0);
 });
+
+const liveAlert = (over: Partial<AlertItem>) =>
+  ({
+    id: "x1", timestamp: new Date().toISOString(), last_seen: new Date().toISOString(), src_ip: "127.0.0.1", dst_ip: "127.0.0.1",
+    src_port: 40000, dst_port: 20, protocol: "TCP", attack_type: "PortScan", confidence: 1, severity: "high", source: "rule",
+    count: 1, batch_id: null, ...over,
+  }) as AlertItem;
+
+test("a new High alert is announced, held as New, and counted in the tab title", async () => {
+  localStorage.setItem("sentinelstream.token", "t0k");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) }));
+  render(<App />);
+  act(() => FakeWS.last.onmessage?.({ data: JSON.stringify({ type: "alert", data: liveAlert({}) }) }));
+  await waitFor(() => expect(screen.getByText("New High alert: PortScan from 127.0.0.1")).toBeTruthy());
+  expect(screen.getByText("New")).toBeTruthy();
+  expect(document.title).toBe("(1 High) SentinelStream");
+});
+
+test("switching to an upload's tab clears the filters, so a stale filter can't hide its alerts", async () => {
+  localStorage.setItem("sentinelstream.token", "t0k");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) }));
+  render(<App />);
+  act(() => FakeWS.last.onmessage?.({ data: JSON.stringify({ type: "batch", data: { batch_id: 7, status: "done" } }) }));
+  fireEvent.change(screen.getByLabelText("Severity"), { target: { value: "high" } });
+  fireEvent.click(screen.getByRole("tab", { name: "Upload 7" }));
+  expect((screen.getByLabelText("Severity") as HTMLSelectElement).value).toBe("all");
+  expect(screen.getByText("In this capture")).toBeTruthy();
+});

@@ -1,18 +1,37 @@
+@import "@fontsource-variable/public-sans/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
 @import "tailwindcss";
 
+/* Light only (AGENTS.md). Every text pairing below is ≥ 4.5:1; severity fills are also ≥ 3:1 as graphics. */
 @theme {
-  --color-page: #f3f5f7;
+  --color-page: #f3f5f8;
   --color-surface: #ffffff;
-  --color-ink: #16232d;
-  --color-muted: #5d6c78;
-  --color-hairline: #dde3e8;
-  --color-traffic: #2a78d6;
-  /* dataviz status palette: always shown with a text label, never colour alone */
-  --color-sev-high: #d03b3b;
-  --color-sev-medium: #ec835a;
-  --color-sev-low: #fab219;
-  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --color-sunk: #e9edf2;
+  --color-ink: #141b24;
+  --color-muted: #4a5666;
+  --color-hairline: #d3dae3;
+  --color-edge: #7b8796; /* input and drop-zone borders: 3.6:1 on white */
+  --color-accent: #2447c2; /* only on things you can press, and focus */
+  --color-accent-tint: #e8edfb;
+
+  --color-sev-high: #b42318;
+  --color-sev-high-tint: #fdecea;
+  --color-sev-high-ink: #8a1a11;
+  --color-sev-medium: #b54708;
+  --color-sev-medium-tint: #fef0db;
+  --color-sev-medium-ink: #7a3406;
+  --color-sev-low: #0e7490;
+  --color-sev-low-tint: #e3f3f7;
+  --color-sev-low-ink: #0b4f63;
+
+  --color-live: #17703a;
+  --color-live-tint: #e4f5ea;
+  --color-stale: #8a5300;
+  --color-stale-tint: #fcf1d6;
+  --color-changed: #fff3c4; /* a row that grew, held until you look at it */
+
+  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
 body {
@@ -22,15 +41,39 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-@keyframes arrived {
-  from { background-color: #e8f1fc; }
-  to { background-color: transparent; }
+::selection {
+  background: var(--color-accent-tint);
+  color: var(--color-ink);
 }
 
-.row-arrived {
-  animation: arrived 1.5s ease-out;
+html {
+  accent-color: var(--color-accent);
+  caret-color: var(--color-accent);
+  scrollbar-color: var(--color-edge) var(--color-page);
+}
+
+.feed-scroll {
+  scrollbar-color: var(--color-edge) var(--color-surface);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+p,
+li {
+  text-wrap: pretty;
+}
+
+@keyframes pulse-dot {
+  50% { opacity: 0.35; }
+}
+
+.dot-live {
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .row-arrived { animation: none; }
+  .dot-live { animation: none; }
 }
