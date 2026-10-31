@@ -2,6 +2,8 @@
 
 Real-time network intrusion detection on a single laptop CPU. SentinelStream captures live traffic (or reads a PCAP), groups packets into flows, scores each flow with machine-learning detectors, and streams alerts to a React dashboard over WebSocket.
 
+![SentinelStream dashboard: the "In effect now" strip shows two High alerts in effect, above a live feed of loopback alerts with per-detector evidence and countdowns, a packets-per-second chart and attack-type counts](docs/images/dashboard.png)
+
 > **Status: all seven phases complete.** Try it: [Quick start](#quick-start) or [docs/DEMO.md](docs/DEMO.md). See [docs/PHASES.md](docs/PHASES.md) for the plan and [PROGRESS.md](PROGRESS.md) for what's done.
 
 ## What it does
