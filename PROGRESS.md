@@ -957,3 +957,60 @@ Correction to the gate verdict above: step 1b ran `drop_capabilities()` in a sta
 All checks passed!
       Tests  21 passed (21)
 ```
+
+## Post-v1 sub-project 2: repo + CI polish
+
+Spec: [docs/superpowers/specs/2026-10-31-repo-ci-polish-design.md](docs/superpowers/specs/2026-10-31-repo-ci-polish-design.md). Plan: [docs/superpowers/plans/2026-10-31-repo-ci-polish.md](docs/superpowers/plans/2026-10-31-repo-ci-polish.md). Merged as PR #3 (61f3919).
+
+### Tasks completed
+
+1. Python requirements renamed to pip-compile's layout (`requirements.in` → hashed `requirements.txt`) so Dependabot regenerates the lock; Dockerfile, CI and CONTRIBUTING.md follow.
+2. Dependabot: weekly pip, npm, GitHub Actions and Docker digest updates, minor/patch grouped.
+3. CI `audit` job: pip-audit 2.10.1 and `npm audit --audit-level=high`.
+4. CI `trivy` job: both images; fixable HIGH/CRITICAL fail the build.
+5. CI `e2e` job: `scripts/e2e-demo.sh` runs the Docker demo and requires a High PortScan alert over the authenticated API plus the dashboard CSP; weekly scheduled run added.
+6. SECURITY.md and a README screenshot (`docs/images/dashboard.png`).
+7. Branch protection, private vulnerability reporting, repo description and topics (after merge).
+
+### Evidence — local checks before the PR
+
+```text
+pip-audit --strict --require-hashes -r requirements.txt → No known vulnerabilities found
+npm audit --audit-level=high → found 0 vulnerabilities
+scripts/e2e-demo.sh → e2e: PASS (High PortScan alert over the API; dashboard CSP present)
+same script with the assertion changed to a non-existent attack → e2e: FAIL: no High PortScan alert within 60 s (exit 1)
+```
+
+### Evidence — Trivy findings and fixes
+
+```text
+0d98d31  sentinelstream-frontend (alpine 3.23.4)  Total: 48 (HIGH: 47, CRITICAL: 1)   nginx:1.29-alpine, no rebuilt digest
+eef427a  sentinelstream-frontend (alpine 3.24.3)  Total: 3 (HIGH: 2, CRITICAL: 1)     moved to nginx:1.30-alpine (stable)
+1d3838d  trivy: pass                                                                  curl/libcurl removed (unused), brotli-libs 1.2.1-r0
+```
+
+The backend image passed Trivy from the first run. The brotli upgrade in `frontend/Dockerfile` is marked as a shortcut to drop once a Dependabot digest bump ships brotli ≥ 1.2.1.
+
+### Evidence — PR #3 CI on its final commit (1d3838d)
+
+```text
+audit: pass
+docker: pass
+e2e: pass
+frontend: pass
+python: pass
+trivy: pass
+```
+
+### Evidence — repository settings (gh api, after merge)
+
+```text
+branch protection: {"checks":["python","frontend","docker","audit","trivy","e2e"],"enforce_admins":false,"pr_reviews_required":0,"strict":true}
+private vulnerability reporting enabled: true
+{"description":"Real-time network intrusion detection on one laptop CPU: Scapy capture, Random Forest + Isolation Forest + port-scan rule, FastAPI/WebSocket API and a React dashboard. Offline, no cloud.","topics":["cicids2017","cybersecurity","fastapi","intrusion-detection","machine-learning","network-security","react","scapy","scikit-learn","websocket"]}
+```
+
+### Notes
+
+- The first local run of `scripts/e2e-demo.sh` used the default compose project, so its `down -v` removed the local demo's data volume (test alerts and the dashboard token, which regenerates). The script now uses its own project name, `sentinelstream-e2e`.
+- Branch protection is proven by this evidence PR: it could merge only after the six required checks passed.
