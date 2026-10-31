@@ -19,8 +19,8 @@ export default function TrafficChart({ points, stale }: { points: TrafficPoint[]
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }} accessibilityLayer={false}>
             <CartesianGrid vertical={false} stroke={HAIRLINE} />
-            <XAxis dataKey="time" tick={{ fill: MUTED, fontSize: 12, fontFamily: "JetBrains Mono Variable, monospace" }} tickLine={false} axisLine={{ stroke: HAIRLINE }} minTickGap={48} />
-            <YAxis tick={{ fill: MUTED, fontSize: 12, fontFamily: "JetBrains Mono Variable, monospace" }} tickLine={false} axisLine={false} width={44} allowDecimals={false} />
+            <XAxis dataKey="time" tick={{ fill: MUTED, fontSize: 12, fontFamily: "JetBrains Mono Variable, monospace" }} tickLine={false} axisLine={{ stroke: HAIRLINE }} minTickGap={48} padding={{ left: 12 }} tickMargin={6} />
+            <YAxis tick={{ fill: MUTED, fontSize: 12, fontFamily: "JetBrains Mono Variable, monospace" }} tickLine={false} axisLine={false} width={44} allowDecimals={false} tickCount={4} interval={0} />
             <Tooltip formatter={(v) => [Math.round(Number(v)).toLocaleString(), "packets/s"]} cursor={{ stroke: HAIRLINE }} />
             {/* No animation: the chart updates every second and should not wobble. */}
             <Line type="monotone" dataKey="pps" stroke={INK} strokeWidth={1.75} dot={false} isAnimationActive={false} />

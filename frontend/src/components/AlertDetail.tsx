@@ -11,7 +11,7 @@ export default function AlertDetail({ alert, clock, onClose }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), [alert.id]);
   const capture = alert.batch_id !== null;
-  const segments: [string, React.ReactNode, boolean?][] = [
+  const segments: [string, React.ReactNode, string?][] = [ // third item: column span, so no row ends in an empty cell
     ["Level", <LevelChip level={alert.severity} state={capture ? "history" : inEffect(alert, clock) ? "active" : "expired"} />],
     ["Detector", DETECTOR[alert.source] ?? alert.source],
     ["Protocol", alert.protocol],
@@ -19,8 +19,8 @@ export default function AlertDetail({ alert, clock, onClose }: Props) {
     ["Destination", <span className="font-mono break-all">{endpoint(alert.dst_ip, alert.dst_port)}</span>],
     ["Repeats", <span className="font-mono">{alert.count.toLocaleString("en-US")}</span>],
     ["First seen", <span className="font-mono">{clockTime(alert.timestamp, capture)}</span>],
-    ["Last seen", <span className="font-mono">{clockTime(alert.last_seen, capture)}</span>],
-    ["Evidence", evidence(alert)[1], true],
+    ["Last seen", <span className="font-mono">{clockTime(alert.last_seen, capture)}</span>, "sm:col-span-2"],
+    ["Evidence", evidence(alert)[1], "col-span-2 sm:col-span-3"],
   ];
   return (
     <section
@@ -38,7 +38,7 @@ export default function AlertDetail({ alert, clock, onClose }: Props) {
       </div>
       <dl className="grid grid-cols-2 sm:grid-cols-3">
         {segments.map(([label, value, wide]) => (
-          <div key={label} className={`border-t border-hairline px-4 py-3 first:border-t-0 sm:[&:nth-child(-n+3)]:border-t-0 max-sm:[&:nth-child(2)]:border-t-0 ${wide ? "col-span-2 sm:col-span-3" : ""}`}>
+          <div key={label} className={`border-t border-hairline px-4 py-3 first:border-t-0 sm:[&:nth-child(-n+3)]:border-t-0 max-sm:[&:nth-child(2)]:border-t-0 ${wide ?? ""}`}>
             <dt className="text-xs font-medium text-muted">{label}</dt>
             <dd className="mt-1 text-sm">{value}</dd>
           </div>
