@@ -1,6 +1,6 @@
 # Backend: FastAPI API + live capture. Build context is the repo root; run it through docker compose,
 # which adds host networking, NET_RAW only and a read-only filesystem.
-FROM python:3.12-slim@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913
 
 # tcpdump: Scapy uses it to compile BPF capture filters.
 RUN apt-get update \
