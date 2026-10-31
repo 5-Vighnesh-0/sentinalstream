@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { FileUp, LoaderCircle } from "lucide-react";
+import { useRef, useState } from "react";
 import { API_URL } from "../config";
 import { authHeader } from "../token";
+
+const MAX_BYTES = 50 * 1024 * 1024; // the backend's cap (docs/API_SPEC.md)
 
 const ERRORS: Record<number, string> = {
   403: "The backend refused the upload. Open the dashboard at http://localhost:3000.",
@@ -8,22 +11,39 @@ const ERRORS: Record<number, string> = {
   429: "Three uploads are already in progress. Try again when one finishes.",
 };
 
+export type Batch = { name: string; status: string };
+
 type Props = {
-  batches: Record<number, string>;
-  onUploaded: (batchId: number) => void;
-  onView: (batchId: number) => void;
+  batches: Record<number, Batch>;
+  onUploaded: (batchId: number, name: string) => void;
   token: string;
   onRejected: () => void;
 };
 
-export default function PCAPUpload({ batches, onUploaded, onView, token, onRejected }: Props) {
+/** Checked here first so a wrong file fails at once, not after a 50 MB upload. */
+export function checkFile(file: File): string {
+  if (!/\.pcap(ng)?$/i.test(file.name)) return "Choose a .pcap or .pcapng file.";
+  if (file.size > MAX_BYTES) return "That file is larger than 50 MB.";
+  return "";
+}
+
+const STATUS: Record<string, string> = { pending: "Queued", processing: "Parsing in sandbox", done: "Done: open its tab above", failed: "Failed: the file could not be parsed" };
+
+export default function PCAPUpload({ batches, onUploaded, token, onRejected }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  function choose(f: File | null) {
+    setFile(f);
+    setError(f ? checkFile(f) : "");
+  }
 
   async function upload(event: React.FormEvent) {
     event.preventDefault();
-    if (!file) return;
+    if (!file || checkFile(file)) return;
     setBusy(true);
     setError("");
     try {
@@ -38,8 +58,9 @@ export default function PCAPUpload({ batches, onUploaded, onView, token, onRejec
       }
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        onUploaded(data.batch_id);
+        onUploaded(data.batch_id, file.name);
         setFile(null);
+        if (input.current) input.current.value = "";
       } else {
         setError(ERRORS[response.status] ?? data.detail ?? `Upload failed (HTTP ${response.status}).`);
       }
@@ -52,30 +73,48 @@ export default function PCAPUpload({ batches, onUploaded, onView, token, onRejec
 
   const ids = Object.keys(batches).map(Number).sort((a, b) => b - a);
   return (
-    <section className="rounded-lg border border-hairline bg-surface p-4">
-      <h2 className="mb-1 text-lg font-semibold">Analyse a capture file</h2>
-      <p className="mb-3 text-sm text-muted">A .pcap or .pcapng file up to 50 MB. Its alerts appear in their own view, apart from live traffic.</p>
-      <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
-        <input
-          type="file"
-          accept=".pcap,.pcapng"
-          aria-label="Capture file"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="min-w-0 flex-1 text-sm file:mr-2 file:rounded file:border file:border-hairline file:bg-page file:px-2 file:py-1"
-        />
-        <button type="submit" disabled={!file || busy} className="rounded bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-40">
+    <section className="rounded-lg border border-hairline bg-surface p-4" aria-labelledby="upload-heading">
+      <h2 id="upload-heading" className="text-lg font-semibold">Analyse a capture file</h2>
+      <p className="mt-1 text-sm text-muted">Its alerts open in their own tab, apart from live traffic.</p>
+      <form onSubmit={upload} className="mt-3 space-y-3">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            choose(e.dataTransfer.files[0] ?? null);
+          }}
+          className={`flex flex-col items-center gap-2 rounded-md border-2 border-dashed px-4 py-5 text-center ${dragging ? "border-accent bg-accent-tint" : "border-edge"}`}
+        >
+          <FileUp aria-hidden size={22} className="text-muted" />
+          <p className="text-sm">{file ? <span className="font-mono">{file.name}</span> : "Drop a .pcap or .pcapng here, up to 50 MB"}</p>
+          <label className="cursor-pointer rounded border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-tint has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent">
+            Browse files
+            <input ref={input} type="file" accept=".pcap,.pcapng" aria-label="Capture file" className="sr-only" onChange={(e) => choose(e.target.files?.[0] ?? null)} />
+          </label>
+        </div>
+        <button
+          type="submit"
+          disabled={!file || !!error || busy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:bg-sunk disabled:text-muted"
+        >
+          {busy && <LoaderCircle aria-hidden size={16} className="animate-spin motion-reduce:animate-none" />}
           {busy ? "Uploading…" : "Analyse"}
         </button>
       </form>
-      {error && <p role="alert" className="mt-2 text-sm text-sev-high">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-sev-high-ink">{error}</p>}
       {ids.length > 0 && (
-        <ul className="mt-3 space-y-1 text-sm">
+        <ul className="mt-3 space-y-1 border-t border-hairline pt-3 text-sm">
           {ids.map((id) => (
-            <li key={id} className="flex items-center justify-between">
-              <span>Upload {id}: {batches[id]}</span>
-              {batches[id] === "done" && (
-                <button type="button" className="text-traffic underline" onClick={() => onView(id)}>View alerts</button>
-              )}
+            <li key={id} className="flex items-baseline justify-between gap-3">
+              <span className="truncate font-mono text-[13px]" title={batches[id].name}>{batches[id].name}</span>
+              <span className={`shrink-0 ${batches[id].status === "failed" ? "font-medium text-sev-high-ink" : "text-muted"}`}>
+                {STATUS[batches[id].status] ?? batches[id].status}
+              </span>
             </li>
           ))}
         </ul>

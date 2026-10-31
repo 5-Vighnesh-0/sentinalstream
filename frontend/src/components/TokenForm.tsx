@@ -5,12 +5,12 @@ export default function TokenForm({ onSave, rejected }: { onSave: (token: string
   const [value, setValue] = useState("");
   const [malformed, setMalformed] = useState(false);
   return (
-    <section className="rounded-lg border border-hairline bg-surface p-4">
+    <section className="rounded-lg border border-hairline bg-surface p-6">
       <h2 className="text-lg font-semibold">Paste the dashboard token</h2>
       <p className="mt-1 text-sm text-muted">
-        The backend prints it when it starts and keeps it in data/api-token (with Docker: docker compose logs backend).
+        The backend prints it when it starts and keeps it in <code className="font-mono text-[13px]">data/api-token</code> (with Docker: <code className="font-mono text-[13px]">docker compose logs backend</code>).
       </p>
-      <p role="alert" className="mt-1 text-sm text-sev-high">
+      <p role="alert" className="mt-2 min-h-5 text-sm font-medium text-sev-high-ink">
         {malformed ? "That doesn't look like a dashboard token." : rejected ? "The backend rejected that token." : ""}
       </p>
       <form
@@ -31,9 +31,9 @@ export default function TokenForm({ onSave, rejected }: { onSave: (token: string
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className="min-w-0 flex-1 rounded border border-hairline px-2 py-1 text-sm"
+          className="min-w-0 flex-1 rounded border border-edge px-3 py-2 font-mono text-sm"
         />
-        <button type="submit" className="rounded bg-ink px-3 py-1.5 text-sm text-white">Save</button>
+        <button type="submit" className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90">Save</button>
       </form>
     </section>
   );

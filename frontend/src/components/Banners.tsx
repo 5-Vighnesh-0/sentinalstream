@@ -1,23 +1,22 @@
+import { CircleAlert, WifiOff } from "lucide-react";
 import type { SocketStatus } from "../useWebSocket";
 
-type Props = { status: SocketStatus; iface: string | null; modelLoaded: boolean | null };
+type Props = { status: SocketStatus; modelLoaded: boolean | null };
 
-export default function Banners({ status, iface, modelLoaded }: Props) {
+/** Problems that change what the screen means. Demo mode is a fact, not a problem: it lives in the header. */
+export default function Banners({ status, modelLoaded }: Props) {
   return (
     <div className="space-y-2">
       {status === "reconnecting" && (
-        <p role="status" className="rounded border border-sev-high/40 bg-sev-high/10 px-3 py-2 text-sm">
-          Lost the connection to the backend at localhost:8000. Reconnecting automatically.
+        <p role="status" className="flex items-center gap-2 rounded-md bg-sunk px-3 py-2 text-sm ring-1 ring-edge">
+          <WifiOff aria-hidden size={16} className="shrink-0" />
+          Lost the connection to the backend at 127.0.0.1:8000. Reconnecting automatically; the feed and chart are paused.
         </p>
       )}
       {modelLoaded === false && (
-        <p role="status" className="rounded border border-sev-medium/50 bg-sev-medium/10 px-3 py-2 text-sm">
+        <p role="status" className="flex items-center gap-2 rounded-md bg-sev-medium-tint px-3 py-2 text-sm text-sev-medium-ink">
+          <CircleAlert aria-hidden size={16} className="shrink-0" />
           No detection model is loaded, so live detection is off. Check the backend log for the model path.
-        </p>
-      )}
-      {iface === "lo" && (
-        <p className="rounded border border-hairline bg-surface px-3 py-2 text-sm">
-          Demo mode: capturing loopback traffic only, so alerts come from programs on this computer.
         </p>
       )}
     </div>
