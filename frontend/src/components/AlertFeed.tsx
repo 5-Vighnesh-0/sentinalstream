@@ -1,6 +1,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, memo, useCallback, useMemo, useRef, useState } from "react";
 import { FEED_LIMIT, IN_EFFECT_MS } from "../config";
+import type { RuleIn } from "../api";
+import { downloadCsv } from "../csv";
 import AlertDetail from "./AlertDetail";
 import { LEVEL, LevelChip, inEffect, typeLabel, type Level } from "./Level";
 
@@ -19,6 +21,8 @@ export type AlertItem = {
   source: string;
   count: number;
   batch_id: number | null;
+  acknowledged_at: string | null;
+  suppressed_by: number | null;
 };
 
 export const DETECTOR = { rule: "Port-scan rule", random_forest: "Classifier", isolation_forest: "Anomaly model" } as Record<string, string>;
@@ -91,7 +95,7 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
           }}
           aria-expanded={open}
           aria-label={`${LEVEL[alert.severity].label} ${typeLabel(alert.attack_type)} from ${endpoint(alert.src_ip, alert.src_port)} at ${clockTime(alert.last_seen, captureTime)}: details`}
-          className={`-my-1 inline-flex min-h-7 items-center gap-1 rounded py-1 underline decoration-hairline underline-offset-4 hover:decoration-ink ${active || captureTime ? "font-semibold text-ink" : "text-muted"}`}
+          className={`-my-1 inline-flex min-h-7 items-center gap-1 rounded py-1 underline decoration-hairline underline-offset-4 hover:decoration-ink ${(active || captureTime) && !alert.acknowledged_at ? "font-semibold text-ink" : "text-muted"}`}
         >
           {typeLabel(alert.attack_type)}
           <Chevron aria-hidden size={14} className="text-muted" />
@@ -114,6 +118,8 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
             {changed === "new" ? "New" : "Updated"}
           </span>
         )}
+        {alert.acknowledged_at && <span className="ml-2 text-xs text-muted">Acknowledged</span>}
+        {alert.suppressed_by !== null && <span className="ml-2 text-xs text-muted">Muted</span>}
         {!captureTime && active && (
           // the in-effect window as a draining rail; the text says the same for anyone who can't see it
           <span className="mt-1 flex items-center gap-2 text-xs text-muted max-xl:justify-end">
@@ -138,12 +144,20 @@ type Props = {
   onFilter: (severity: string, activeOnly: boolean) => void;
   changed: Map<string, "new" | "updated">;
   onSeen: (id: string) => void;
+  mutedCount: number; // muted alerts in this view; `alerts` excludes them unless showMuted
+  showMuted: boolean;
+  onShowMuted: (show: boolean) => void;
+  onAck: (id: string, acknowledged: boolean) => Promise<void>;
+  onMute: (rule: RuleIn) => Promise<void>;
+  exportName: string;
 };
 
 /** Alerts by latest activity (last_seen) first; filters apply before the 200-row cap so a filter never hides matches beyond it.
  *  In effect alerts are always the newest, so one divider separates them from history. */
-export default function AlertFeed({ alerts, captureTime, clock, frozen, severity, activeOnly, onFilter, changed, onSeen }: Props) {
+export default function AlertFeed(props: Props) {
+  const { alerts, captureTime, clock, frozen, severity, activeOnly, onFilter, changed, onSeen } = props;
   const [attackType, setAttackType] = useState("all");
+  const [needsAttention, setNeedsAttention] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const attackTypes = useMemo(() => [...new Set(alerts.map((a) => a.attack_type))].sort(), [alerts]);
   const matching = useMemo(
@@ -153,15 +167,18 @@ export default function AlertFeed({ alerts, captureTime, clock, frozen, severity
           (a) =>
             (severity === "all" || a.severity === severity) &&
             (attackType === "all" || a.attack_type === attackType) &&
-            (!activeOnly || inEffect(a, clock)),
+            (!activeOnly || inEffect(a, clock)) &&
+            (!needsAttention || a.acknowledged_at === null),
         )
         // The API pages by first-seen timestamp, but the feed shows last_seen: order by what is shown.
         .sort((a, b) => Date.parse(b.last_seen) - Date.parse(a.last_seen)),
-    [alerts, severity, attackType, activeOnly, clock],
+    [alerts, severity, attackType, activeOnly, clock, needsAttention],
   );
   const shown = matching.slice(0, FEED_LIMIT);
   const firstExpired = captureTime ? -1 : shown.findIndex((a) => !inEffect(a, clock));
-  const filtered = severity !== "all" || attackType !== "all" || activeOnly;
+  const filtered = severity !== "all" || attackType !== "all" || activeOnly || needsAttention || props.showMuted;
+  const toggleButton = (pressed: boolean) =>
+    `min-h-9 rounded px-3 text-sm font-medium ring-1 ${pressed ? "bg-accent text-white ring-accent" : "text-accent ring-edge hover:bg-accent-tint"}`;
   const select = "mt-1 min-h-9 rounded border border-edge bg-surface px-2 text-sm text-ink";
 
   const toggle = useCallback((id: string) => setOpenId((cur) => (cur === id ? null : id)), []);
@@ -182,6 +199,14 @@ export default function AlertFeed({ alerts, captureTime, clock, frozen, severity
             {activeOnly ? ", in effect only" : ", latest activity first"}
           </p>
         </div>
+        <button type="button" aria-pressed={needsAttention} onClick={() => setNeedsAttention(!needsAttention)} className={toggleButton(needsAttention)}>
+          Needs attention
+        </button>
+        {props.mutedCount > 0 && (
+          <button type="button" aria-pressed={props.showMuted} onClick={() => props.onShowMuted(!props.showMuted)} className={toggleButton(props.showMuted)}>
+            {props.mutedCount.toLocaleString("en-US")} muted · {props.showMuted ? "Hide" : "Show"}
+          </button>
+        )}
         <label className="flex flex-col text-xs font-medium text-muted">
           Severity
           <select className={select} value={severity} onChange={(e) => onFilter(e.target.value, activeOnly)}>
@@ -207,11 +232,21 @@ export default function AlertFeed({ alerts, captureTime, clock, frozen, severity
             onClick={() => {
               onFilter("all", false);
               setAttackType("all");
+              setNeedsAttention(false);
+              props.onShowMuted(false);
             }}
           >
             Clear filters
           </button>
         )}
+        <button
+          type="button"
+          disabled={matching.length === 0}
+          onClick={() => downloadCsv(matching, props.exportName)}
+          className="min-h-9 rounded px-3 text-sm font-medium text-accent ring-1 ring-edge hover:bg-accent-tint disabled:text-muted disabled:ring-hairline"
+        >
+          Export CSV
+        </button>
       </div>
       <div className="feed-scroll overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -250,7 +285,7 @@ export default function AlertFeed({ alerts, captureTime, clock, frozen, severity
                 {a.id === openId && (
                   <tr className="max-xl:block">
                     <td colSpan={6} className="border-t border-hairline bg-sunk p-3 max-xl:block">
-                      <AlertDetail alert={a} clock={clock} onClose={close} />
+                      <AlertDetail alert={a} clock={clock} onClose={close} onAck={props.onAck} onMute={props.onMute} />
                     </td>
                   </tr>
                 )}
@@ -260,10 +295,14 @@ export default function AlertFeed({ alerts, captureTime, clock, frozen, severity
         </table>
         {shown.length === 0 && (
           <p className="px-4 py-8 text-center text-sm text-muted">
-            {alerts.length
+            {!alerts.length && props.mutedCount
+              ? "Every alert in this view is muted. Show muted alerts, or delete a rule in Muted patterns."
+              : alerts.length
               ? activeOnly
                 ? "Nothing at this level is in effect. Clear the filter to see its history."
-                : "No alerts match these filters."
+                : needsAttention
+                  ? "Everything here has been acknowledged."
+                  : "No alerts match these filters."
               : captureTime
                 ? "This capture produced no alerts."
                 : "No alerts yet. New detections appear here as they happen; run the simulator to see one."}

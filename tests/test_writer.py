@@ -2,7 +2,9 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from backend.db.writer import AlertAggregator, Writer
+import pytest
+
+from backend.db.writer import AlertAggregator, Writer, connect
 from backend.detection.detectors import Detectors
 from backend.features.extractor import Flow
 
@@ -68,3 +70,41 @@ def test_writer_upserts_and_keeps_newest(tmp_path):
     rows = conn.execute("select src_ip, count from alerts order by timestamp").fetchall()
     assert rows == [("10.0.0.100", 1), ("10.0.0.200", 2)]  # oldest deleted by retention, update applied
     assert conn.execute("select count(*) from flows").fetchone()[0] == 2  # orphaned flow deleted too
+
+
+def test_existing_database_gains_acknowledged_at_and_keeps_rows(tmp_path):
+    db = tmp_path / "old.db"
+    agg = AlertAggregator()
+    writer = Writer(db)
+    writer.start()
+    writer.submit(*agg.add(row(0)))
+    writer.stop()
+    with sqlite3.connect(db) as old:  # make it a database from before the column existed
+        old.execute("ALTER TABLE alerts DROP COLUMN acknowledged_at")
+    conn = connect(db)
+    assert "acknowledged_at" in {r[1] for r in conn.execute("PRAGMA table_info(alerts)")}
+    assert conn.execute("SELECT src_ip, acknowledged_at FROM alerts").fetchall() == [("10.0.0.9", None)]
+
+
+def test_a_rule_that_matches_everything_is_refused(tmp_path):
+    conn = connect(tmp_path / "a.db")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO suppressions (created_at) VALUES ('2026-10-29T12:00:00.000Z')")
+
+
+def test_a_repeat_clears_the_acknowledgement(tmp_path):
+    db = tmp_path / "a.db"
+    agg = AlertAggregator()
+    first, flow = agg.add(row(0))
+    writer = Writer(db)
+    writer.start()
+    writer.submit(first, flow)
+    writer.stop()
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE alerts SET acknowledged_at = '2026-10-29T12:00:05.000Z'")
+    repeat, _ = agg.add(row(10))
+    writer = Writer(db)
+    writer.start()
+    writer.submit(repeat, None)
+    writer.stop()
+    assert sqlite3.connect(db).execute("SELECT count, acknowledged_at FROM alerts").fetchone() == (2, None)

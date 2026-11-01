@@ -3,7 +3,7 @@
 Base URL: `http://127.0.0.1:8000` (the dashboard uses the IP, not `localhost`, so browsers never try `::1`). Implemented in Phase 3 (`backend/api/main.py`).
 
 - Authentication: `GET /alerts` and `POST /upload-pcap` need `Authorization: Bearer <token>` → else **401**. The token (`secrets.token_urlsafe(32)`) is in `api-token` (mode 600) next to the database (`data/api-token` by default, i.e. `dirname(SENTINEL_DB_PATH)`) and printed to stderr at startup as `Dashboard token: … (stored in …; delete the file to rotate it)`; deleting the file and restarting rotates it. `/health` is open. The backend also binds `127.0.0.1` only. See [ARCHITECTURE.md](ARCHITECTURE.md#trust-boundary).
-- CORS allows origins `http://localhost:3000` and `http://127.0.0.1:3000` only, and the `Authorization` and `X-Sentinel-Upload` request headers; never `*`.
+- CORS allows origins `http://localhost:3000` and `http://127.0.0.1:3000` only, and the `Authorization`, `Content-Type` and `X-Sentinel-Upload` request headers, and methods GET, POST, PUT and DELETE; never `*`. Write endpoints need the Bearer token, which forces a CORS preflight only the dashboard origins pass, so they need no extra CSRF header.
 - Host header must be `localhost` or `127.0.0.1` (TrustedHostMiddleware) → else **400**. Blocks DNS rebinding.
 - Errors use FastAPI's default shape: `{"detail": "..."}` (validation errors: `{"detail": [ ... ]}` with status 422).
 - Timestamps are ISO-8601 UTC strings. Field definitions are in [DATA_MODEL.md](DATA_MODEL.md).
@@ -28,9 +28,13 @@ Used by `GET /alerts` and the WebSocket `alert` message.
   "count": 1,
   "last_seen": "2026-10-28T10:15:30.123Z",
   "batch_id": null,
-  "flow_id": "9a8b7c6d5e4f40312a1b0c9d8e7f6a5b"
+  "flow_id": "9a8b7c6d5e4f40312a1b0c9d8e7f6a5b",
+  "acknowledged_at": null,
+  "suppressed_by": null
 }
 ```
+
+`acknowledged_at`: when an analyst acknowledged it (null = needs attention; a later repeat clears it). `suppressed_by`: id of the mute rule that hides it, or null. Muted alerts are still stored, returned and broadcast; the dashboard hides them.
 
 ## `GET /health`
 
@@ -94,6 +98,26 @@ Processing runs in the background PCAP worker. Alerts it produces carry the new 
 ```
 
 **422** missing `file` field.
+
+## `PUT /alerts/{id}/ack`
+
+Acknowledge or un-acknowledge an alert. Body `{"acknowledged": true}` or `{"acknowledged": false}`. Needs the dashboard token.
+
+**200** the updated alert object. **404** unknown id.
+
+## `GET /suppressions` · `POST /suppressions` · `DELETE /suppressions/{id}`
+
+Mute rules. Each needs the dashboard token.
+
+- `GET` → **200** `[{"id": 1, "src_ip": "127.0.0.1", "dst_ip": "127.0.0.1", "dst_port": 42361, "attack_type": "anomaly", "created_at": "…"}]`, sorted by id.
+- `POST` body: any of `src_ip`, `dst_ip`, `dst_port`, `attack_type` (omitted or null = any) → **201** the rule. **422** when every field is null, an IP doesn't parse, the port is outside 0–65535, or `attack_type` is empty or over 64 characters.
+- `DELETE` → **204**; **404** unknown id. Matching alerts are unmuted immediately.
+
+## `GET /uploads`
+
+Upload batches, newest first. Needs the dashboard token.
+
+**200** `[{"id": 7, "filename": "capture.pcap", "uploaded_at": "…", "status": "done"}]`
 
 ## `WS /ws/alerts`
 
