@@ -285,7 +285,7 @@ def create_app(capture: bool = True) -> FastAPI:
     app.state.db_path = db_path
     app.state.uploads = uploads_queue
     app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST", "PUT", "DELETE"],
-                       allow_headers=["X-Sentinel-Upload", "Authorization"])
+                       allow_headers=["X-Sentinel-Upload", "Authorization", "Content-Type"])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # blocks DNS rebinding
     app.add_middleware(UploadSizeLimit, limit=uploads.MAX_UPLOAD_BYTES)
 

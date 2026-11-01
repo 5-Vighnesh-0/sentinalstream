@@ -18,6 +18,16 @@ test("live alerts never evict an upload's alerts", () => {
   expect(list.filter((a) => a.batch_id === null)).toHaveLength(1000);
 });
 
+/** A backend double: lists for /suppressions and /uploads, an alert page for everything else. */
+function api(extra: Record<string, unknown> = {}) {
+  return vi.fn(async (url: string) => {
+    const path = new URL(String(url)).pathname;
+    const body = path === "/suppressions" || path === "/uploads" ? (extra[path] ?? []) : { items: [], model_loaded: true };
+    return { status: 200, ok: true, json: async () => body };
+  });
+}
+const alertCalls = (mock: ReturnType<typeof api>) => mock.mock.calls.filter(([url]) => new URL(String(url)).pathname === "/alerts");
+
 class FakeWS {
   static last: FakeWS;
   static count = 0;
@@ -48,7 +58,7 @@ test("asks for the token when none is stored", () => {
 
 test("sends the stored token to the WebSocket and the REST API", async () => {
   localStorage.setItem("sentinelstream.token", "t0k");
-  const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [], model_loaded: true }) });
+  const fetchMock = api();
   vi.stubGlobal("fetch", fetchMock);
   render(<App />);
   expect(FakeWS.last.protocols).toEqual(["sentinelstream", "t0k"]);
@@ -61,17 +71,17 @@ test("a rejected token brings back the form even though the socket never opens",
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 401, ok: false, json: async () => ({}) }));
   render(<App />);
   await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/rejected that token/));
-  expect(screen.getByText("Waiting for the dashboard token")).toBeTruthy();
+  expect(await screen.findByText("Waiting for the dashboard token")).toBeTruthy(); // the pill updates in the next render
 });
 
 test("each failed reconnect probes /alerts again", async () => {
   localStorage.setItem("sentinelstream.token", "t0k");
-  const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) });
+  const fetchMock = api();
   vi.stubGlobal("fetch", fetchMock);
   render(<App />);
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(alertCalls(fetchMock)).toHaveLength(1));
   act(() => FakeWS.last.onclose?.());
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(alertCalls(fetchMock)).toHaveLength(2));
 });
 
 test("without a token the header waits for one and no socket is opened", () => {
@@ -83,7 +93,7 @@ test("without a token the header waits for one and no socket is opened", () => {
 });
 
 test("saving a valid token stores it and opens the socket with it", async () => {
-  const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) });
+  const fetchMock = api();
   vi.stubGlobal("fetch", fetchMock);
   render(<App />);
   fireEvent.change(screen.getByLabelText("Dashboard token"), { target: { value: " abc_DEF-123 " } });
@@ -112,7 +122,7 @@ test("a malformed stored token yields the form, not a crash", () => {
 });
 
 const liveAlert = (over: Partial<AlertItem>) =>
-  ({
+  ({ acknowledged_at: null, suppressed_by: null,
     id: "x1", timestamp: new Date().toISOString(), last_seen: new Date().toISOString(), src_ip: "127.0.0.1", dst_ip: "127.0.0.1",
     src_port: 40000, dst_port: 20, protocol: "TCP", attack_type: "PortScan", confidence: 1, severity: "high", source: "rule",
     count: 1, batch_id: null, ...over,
@@ -120,7 +130,7 @@ const liveAlert = (over: Partial<AlertItem>) =>
 
 test("a new High alert is announced, held as New, and counted in the tab title", async () => {
   localStorage.setItem("sentinelstream.token", "t0k");
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) }));
+  vi.stubGlobal("fetch", api());
   render(<App />);
   act(() => FakeWS.last.onmessage?.({ data: JSON.stringify({ type: "alert", data: liveAlert({}) }) }));
   await waitFor(() => expect(screen.getByText("New High alert: PortScan from 127.0.0.1")).toBeTruthy());
@@ -130,7 +140,7 @@ test("a new High alert is announced, held as New, and counted in the tab title",
 
 test("switching to an upload's tab clears the filters, so a stale filter can't hide its alerts", async () => {
   localStorage.setItem("sentinelstream.token", "t0k");
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ items: [] }) }));
+  vi.stubGlobal("fetch", api());
   render(<App />);
   act(() => FakeWS.last.onmessage?.({ data: JSON.stringify({ type: "batch", data: { batch_id: 7, status: "done" } }) }));
   fireEvent.change(screen.getByLabelText("Severity"), { target: { value: "high" } });
