@@ -25,10 +25,13 @@ Conventions: timestamps are ISO-8601 UTC strings with milliseconds (`2026-10-28T
 | `last_seen` | TEXT | NOT NULL | Latest merged detection; `timestamp` is the first (D4) |
 | `batch_id` | INTEGER | NULL, FK → `upload_batches.id` | NULL for live capture |
 | `flow_id` | TEXT | NULL, FK → `flows.id` | Added at the user's request (Phase 0) so an analyst can open the features behind an alert |
+| `acknowledged_at` | TEXT | NULL | When an analyst acknowledged the alert; NULL = needs attention. Added in sub-project 3 (schema change approved 2026-10-31) by an idempotent `ALTER TABLE` at startup, so older databases keep their rows. An aggregated repeat sets it back to NULL |
 
 Indexes: `timestamp DESC`, `severity`, `attack_type`, `batch_id`.
 
 **Aggregation (D4):** a detection with the same (`src_ip`, `dst_ip`, `attack_type`) as an alert whose `last_seen` is < 30 s old updates that alert (`count` + 1, `last_seen`, highest `confidence`/`severity`) instead of inserting a new row. Retention: at most 100,000 alerts, oldest deleted first (Phase 3).
+
+**Writers:** the writer thread is the only writer of detections (batched upserts). Analyst actions (acknowledging, mute rules) are rare and need an immediate answer, so the API writes them through a short connection of its own.
 
 ### `flows`
 
@@ -53,6 +56,21 @@ Index: `flow_key`.
 | `status` | TEXT | NOT NULL, CHECK IN (`pending`,`processing`,`done`,`failed`) | |
 
 Write order: `flows` row before the `alerts` row that references it, in the same transaction.
+
+### `suppressions`
+
+Mute rules (sub-project 3). A rule hides matching alerts in the dashboard; it never deletes them.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | |
+| `src_ip` | TEXT | NULL | NULL = any |
+| `dst_ip` | TEXT | NULL | NULL = any |
+| `dst_port` | INTEGER | NULL | NULL = any |
+| `attack_type` | TEXT | NULL | NULL = any |
+| `created_at` | TEXT | NOT NULL | |
+
+`CHECK` at least one of the four match fields is NOT NULL (a rule that matches everything is refused). An alert is muted by the lowest-id rule whose non-NULL fields all equal the alert's; matching happens at read and broadcast time, so deleting a rule unmutes its alerts at once.
 
 ## Attack types
 
