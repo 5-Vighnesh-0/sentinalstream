@@ -192,6 +192,7 @@ def create_app(capture: bool = True) -> FastAPI:
     model_path = resolve_model_path()
     iface = os.environ.get("SENTINEL_IFACE", "lo")
     hub = Hub(db_path)
+    connect(db_path).close()  # create or migrate now: the read-only API connections must never see an old schema
     uploads_queue: queue.Queue = queue.Queue(maxsize=UPLOAD_BACKLOG)
     upload_lock = threading.Lock()
 

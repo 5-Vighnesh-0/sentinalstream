@@ -40,7 +40,17 @@ CREATE TABLE IF NOT EXISTS alerts (
     count INTEGER NOT NULL DEFAULT 1,
     last_seen TEXT NOT NULL,
     batch_id INTEGER REFERENCES upload_batches(id),
-    flow_id TEXT REFERENCES flows(id)
+    flow_id TEXT REFERENCES flows(id),
+    acknowledged_at TEXT
+);
+CREATE TABLE IF NOT EXISTS suppressions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    src_ip TEXT,
+    dst_ip TEXT,
+    dst_port INTEGER,
+    attack_type TEXT,
+    created_at TEXT NOT NULL,
+    CHECK (src_ip IS NOT NULL OR dst_ip IS NOT NULL OR dst_port IS NOT NULL OR attack_type IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS alerts_timestamp ON alerts (timestamp DESC);
 CREATE INDEX IF NOT EXISTS alerts_severity ON alerts (severity);
@@ -49,7 +59,7 @@ CREATE INDEX IF NOT EXISTS alerts_batch_id ON alerts (batch_id);
 CREATE INDEX IF NOT EXISTS flows_flow_key ON flows (flow_key);
 """
 ALERT_FIELDS = ["id", "timestamp", "src_ip", "dst_ip", "src_port", "dst_port", "protocol", "attack_type",
-                "confidence", "severity", "source", "count", "last_seen", "batch_id", "flow_id"]
+                "confidence", "severity", "source", "count", "last_seen", "batch_id", "flow_id", "acknowledged_at"]
 AGGREGATE_WINDOW_S = 30.0
 BATCH_SIZE = 50
 BATCH_EVERY_S = 2.0
@@ -61,6 +71,8 @@ def connect(db_path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")  # API reads don't block the writer
     conn.executescript(SCHEMA)
+    if "acknowledged_at" not in {r[1] for r in conn.execute("PRAGMA table_info(alerts)")}:
+        conn.execute("ALTER TABLE alerts ADD COLUMN acknowledged_at TEXT")  # databases from before sub-project 3
     return conn
 
 
@@ -97,7 +109,7 @@ class AlertAggregator:
             "src_port": row["src_port"], "dst_port": row["dst_port"], "protocol": row["protocol"],
             "attack_type": row["attack_type"], "confidence": row["score"], "severity": row["severity"],
             "source": row["source"], "count": 1, "last_seen": row["timestamp"], "batch_id": batch_id,
-            "flow_id": flow["id"], "_last_ts": ts,
+            "flow_id": flow["id"], "acknowledged_at": None, "_last_ts": ts,
         }
         self._open[key] = alert
         if len(self._open) > self.max_open:
@@ -161,7 +173,8 @@ class Writer(threading.Thread):
             conn.executemany(
                 f"INSERT INTO alerts ({', '.join(ALERT_FIELDS)}) VALUES ({', '.join(':' + f for f in ALERT_FIELDS)}) "
                 "ON CONFLICT(id) DO UPDATE SET count = excluded.count, last_seen = excluded.last_seen, "
-                "confidence = excluded.confidence, severity = excluded.severity",
+                "confidence = excluded.confidence, severity = excluded.severity, "
+                "acknowledged_at = NULL",  # new activity needs a new look
                 [alert for alert, _ in pending],
             )
             conn.execute("DELETE FROM alerts WHERE id IN (SELECT id FROM alerts ORDER BY timestamp "
