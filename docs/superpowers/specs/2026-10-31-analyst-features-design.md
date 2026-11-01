@@ -1,6 +1,6 @@
 # Sub-project 3: Analyst features — design
 
-Roadmap: [2026-10-29-security-hardening-design.md](2026-10-29-security-hardening-design.md), row 3. Approved by the human on 2026-11-01, including the SQLite schema change (frozen since Phase 3).
+Roadmap: [2026-10-29-security-hardening-design.md](2026-10-29-security-hardening-design.md), row 3. Approved by the human on 2026-10-31, including the SQLite schema change (frozen since Phase 3).
 
 ## Goal
 

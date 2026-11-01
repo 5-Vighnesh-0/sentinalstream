@@ -24,9 +24,9 @@ Spec: [docs/superpowers/specs/2026-10-31-analyst-features-design.md](../specs/20
 
 ### Task 1: Schema, migration, clear-on-repeat
 
-**Files:** `backend/db/writer.py`, `backend/api/main.py` (create_app), `tests/test_db.py`
+**Files:** `backend/db/writer.py`, `backend/api/main.py` (create_app), `tests/test_writer.py`
 
-- [ ] **Step 1: Failing tests** in `tests/test_db.py`:
+- [ ] **Step 1: Failing tests** in `tests/test_writer.py`:
   - a database created by the old schema (alerts without `acknowledged_at`) gains the column after `connect()`, with its rows intact;
   - `suppressions` exists and refuses an all-NULL row (`sqlite3.IntegrityError`);
   - writer upsert of an aggregated repeat sets `acknowledged_at` back to NULL (insert an alert, set `acknowledged_at`, flush the same id with count 2 → NULL).
