@@ -16,8 +16,8 @@ type Props = { rules: Rule[]; onDelete: (id: number) => Promise<void> };
 export default function MutedPatterns({ rules, onDelete }: Props) {
   if (rules.length === 0) return null;
   return (
-    <section className="rounded-lg border border-hairline bg-surface p-4" aria-labelledby="muted-heading">
-      <h2 id="muted-heading" className="text-lg font-semibold">Muted patterns</h2>
+    <section className="ink-panel bg-surface p-4" aria-labelledby="muted-heading">
+      <h2 id="muted-heading" className="brush-title text-lg font-semibold">Muted patterns</h2>
       <p className="mt-1 text-sm text-muted">Matching alerts are stored and counted, but hidden from the feed.</p>
       <ul className="mt-3 divide-y divide-hairline border-t border-hairline">
         {rules.map((rule) => (

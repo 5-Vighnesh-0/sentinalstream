@@ -219,10 +219,10 @@ export default function AlertFeed(props: Props) {
   }
 
   return (
-    <section className="rounded-lg border border-hairline bg-surface" aria-labelledby="alerts-heading">
+    <section className="ink-panel bg-surface" aria-labelledby="alerts-heading">
       <div className="flex flex-wrap items-end gap-3 px-4 pt-4 pb-3">
         <div className="mr-auto">
-          <h2 id="alerts-heading" className="text-lg font-semibold">Alerts</h2>
+          <h2 id="alerts-heading" className="brush-title text-lg font-semibold">Alerts</h2>
           <p className="text-sm text-muted">
             Showing {shown.length.toLocaleString("en-US")} of {matching.length.toLocaleString("en-US")}
             {activeOnly ? ", in effect only" : ", latest activity first"}

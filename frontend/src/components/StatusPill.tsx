@@ -35,7 +35,7 @@ export default function StatusPill({ status, iface, pps, lastStatAt, now, stale 
     text = ["Live", iface && `capturing on ${iface}`, pps !== null && `${Math.round(pps).toLocaleString()} packets/s`, lastStatAt && `data ${ago(now - lastStatAt)}`].filter(Boolean).join(" · ");
   }
   return (
-    <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${look}`}>
+    <p className={`inline-flex items-center gap-2 rounded-xl px-3 py-1 text-sm font-medium sm:rounded-full ${look}`}>
       {icon}
       <span>{text}</span>
       <span role="status" className="sr-only">{state}</span>

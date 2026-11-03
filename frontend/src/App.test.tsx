@@ -136,7 +136,7 @@ test("a new High alert is announced, held as New, and counted in the tab title",
   await waitFor(() => expect(screen.getByText("New High alert: PortScan from 127.0.0.1")).toBeTruthy());
   expect(screen.getByText("New")).toBeTruthy();
   expect(document.title).toBe("(1 High) SentinelStream");
-  expect(screen.getByText("HIGH IN EFFECT")).toBeTruthy(); // the masthead raises the warning
+  expect(screen.getByRole("heading", { name: "High in effect" })).toBeTruthy(); // the ink band raises the warning
 });
 
 test("switching to an upload's tab clears the filters, so a stale filter can't hide its alerts", async () => {

@@ -73,8 +73,8 @@ export default function PCAPUpload({ batches, onUploaded, token, onRejected }: P
 
   const ids = Object.keys(batches).map(Number).sort((a, b) => b - a);
   return (
-    <section className="rounded-lg border border-hairline bg-surface p-4" aria-labelledby="upload-heading">
-      <h2 id="upload-heading" className="text-lg font-semibold">Analyse a capture file</h2>
+    <section className="ink-panel bg-surface p-4" aria-labelledby="upload-heading">
+      <h2 id="upload-heading" className="brush-title text-lg font-semibold">Analyse a capture file</h2>
       <p className="mt-1 text-sm text-muted">Its alerts open in their own tab, apart from live traffic.</p>
       <form onSubmit={upload} className="mt-3 space-y-3">
         <div
@@ -100,7 +100,7 @@ export default function PCAPUpload({ batches, onUploaded, token, onRejected }: P
         <button
           type="submit"
           disabled={!file || !!error || busy}
-          className="inline-flex w-full items-center justify-center gap-2 rounded bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:bg-sunk disabled:text-muted"
+          className="inline-flex w-full items-center justify-center gap-2 ink-btn rounded px-3 py-2 text-sm font-semibold text-white"
         >
           {busy && <LoaderCircle aria-hidden size={16} className="animate-spin motion-reduce:animate-none" />}
           {busy ? "Uploading…" : "Analyse"}

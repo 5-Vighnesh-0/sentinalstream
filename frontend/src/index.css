@@ -1,37 +1,43 @@
 @import "@fontsource-variable/public-sans/wght.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "@fontsource-variable/montserrat/wght.css";
 @import "tailwindcss";
 
-/* Light only (AGENTS.md). Every text pairing below is ≥ 4.5:1; severity fills are also ≥ 3:1 as graphics. */
+/* Ink on paper, light only (AGENTS.md). Black and white, with one vermilion "seal" kept for High alone,
+ * as an ink painting keeps its only colour for the stamp. Every text pairing is >= 4.5:1. */
 @theme {
-  --color-page: #f3f5f8;
+  --color-page: #f7f7f5;
   --color-surface: #ffffff;
-  --color-sunk: #e9edf2;
-  --color-ink: #141b24;
-  --color-muted: #4a5666;
-  --color-hairline: #d3dae3;
-  --color-edge: #7b8796; /* input and drop-zone borders: 3.6:1 on white */
-  --color-accent: #2447c2; /* only on things you can press, and focus */
-  --color-accent-tint: #e8edfb;
+  --color-sunk: #eeeeec;
+  --color-ink: #141414;
+  --color-muted: #575757;
+  --color-hairline: #d6d6d4;
+  --color-edge: #8c8c8c; /* input and drop-zone borders: 3.3:1 on white */
+  --color-accent: #141414; /* pressables are inked */
+  --color-accent-tint: #ececea;
+  --color-band: #1a1a1a; /* the ink-wash band */
+  --color-band-text: #e8e8e6;
+  --color-band-muted: #a3a3a0;
 
-  --color-sev-high: #b42318;
-  --color-sev-high-tint: #fdecea;
-  --color-sev-high-ink: #8a1a11;
-  --color-sev-medium: #b54708;
-  --color-sev-medium-tint: #fef0db;
-  --color-sev-medium-ink: #7a3406;
-  --color-sev-low: #0e7490;
-  --color-sev-low-tint: #e3f3f7;
-  --color-sev-low-ink: #0b4f63;
+  --color-sev-high: #c0311a; /* vermilion seal: the only colour on the page */
+  --color-sev-high-tint: #fbe9e6;
+  --color-sev-high-ink: #8f2412;
+  --color-sev-medium: #3d3d3d; /* grey wash */
+  --color-sev-medium-tint: #e2e2e0;
+  --color-sev-medium-ink: #262626;
+  --color-sev-low: #707070; /* outline */
+  --color-sev-low-tint: #f1f1ef;
+  --color-sev-low-ink: #3a3a3a;
 
-  --color-live: #17703a;
-  --color-live-tint: #e4f5ea;
-  --color-stale: #8a5300;
-  --color-stale-tint: #fcf1d6;
-  --color-changed: #fff3c4; /* a row that grew, held until you look at it */
+  --color-live: #1f1f1f;
+  --color-live-tint: #ececea;
+  --color-stale: #5c5c5c;
+  --color-stale-tint: #f2f2f0;
+  --color-changed: #e6e6e3; /* a row that grew, held until you look at it */
 
   --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-display: "Montserrat Variable", "Public Sans Variable", sans-serif; /* the band and the wordmark only */
 }
 
 body {
@@ -87,4 +93,52 @@ li {
 @media (prefers-reduced-motion: reduce) {
   .dot-live,
   .count-tick { animation: none; }
+}
+
+/* Brushwork lives on frames, never on the data inside them: the border is a separate layer run through a
+ * displacement filter (InkDefs), so its edge looks inked while text stays crisp. */
+.ink-panel {
+  position: relative;
+}
+
+.ink-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 2px;
+  filter: url(#ink-rough);
+  pointer-events: none;
+}
+
+.ink-btn {
+  position: relative;
+  isolation: isolate;
+  color: #fff;
+}
+
+.ink-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 2px;
+  background: var(--color-ink);
+  filter: url(#ink-rough);
+}
+
+.ink-btn:hover::before { opacity: 0.86; }
+
+.ink-btn:disabled { color: var(--color-muted); }
+
+.ink-btn:disabled::before { background: var(--color-sunk); }
+
+/* A short brushstroke under each panel title: the system's one ornament. */
+.brush-title::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 7px;
+  margin-top: 4px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 7'%3E%3Cpath d='M1 4.6C8 2.4 17 1.6 26 2.2c6 .4 11 1.2 17 .6-4 1.8-10 2.9-17 3.2C17 6.3 8 6.1 1 4.6z' fill='%23141414'/%3E%3C/svg%3E") no-repeat;
 }

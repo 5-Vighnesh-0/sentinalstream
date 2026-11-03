@@ -55,7 +55,7 @@ export default function MuteEditor({ alert, onSave, onCancel }: Props) {
         </p>
       )}
       <div className="flex items-center gap-2">
-        <button type="button" disabled={allAny || busy} onClick={save} className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:bg-sunk disabled:text-muted">
+        <button type="button" disabled={allAny || busy} onClick={save} className="ink-btn rounded px-3 py-1.5 text-sm font-semibold text-white">
           {busy ? "Saving…" : "Mute"}
         </button>
         <button type="button" onClick={onCancel} className="rounded px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-tint">Cancel</button>

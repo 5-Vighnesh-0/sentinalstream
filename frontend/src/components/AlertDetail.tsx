@@ -66,7 +66,7 @@ export default function AlertDetail({ alert, clock, onClose, onAck, onMute }: Pr
       </dl>
       <div className="space-y-3 border-t border-hairline px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={ack} className="inline-flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent/90">
+          <button type="button" onClick={ack} className="inline-flex items-center gap-1.5 ink-btn rounded px-3 py-1.5 text-sm font-semibold text-white">
             <Check aria-hidden size={15} /> {acked ? "Undo acknowledge" : "Acknowledge"}
           </button>
           <button type="button" aria-expanded={muting} onClick={() => setMuting(!muting)} className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium text-accent ring-1 ring-edge hover:bg-accent-tint">

@@ -3,7 +3,7 @@ import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, 
 import { typeLabel } from "./Level";
 import type { AlertItem } from "./AlertFeed";
 
-const INK = "#141b24", MUTED = "#4a5666", HAIRLINE = "#d3dae3", SUNK = "#e9edf2"; // index.css tokens; same as TrafficChart
+const INK = "#141414", MUTED = "#575757", HAIRLINE = "#d6d6d4", SUNK = "#eeeeec"; // index.css tokens; same as TrafficChart
 
 /** Detections per attack type in the current view. Bars encode magnitude, so one neutral hue; the type is on the axis.
  *  A detection is one flow; an aggregated alert counts each of its repeats. */
@@ -14,8 +14,8 @@ export default memo(function AttackDistribution({ alerts }: { alerts: AlertItem[
   const n = alerts.length;
 
   return (
-    <section className="rounded-lg border border-hairline bg-surface p-4" aria-labelledby="types-heading">
-      <h2 id="types-heading" className="text-lg font-semibold">Attack types</h2>
+    <section className="ink-panel bg-surface p-4" aria-labelledby="types-heading">
+      <h2 id="types-heading" className="brush-title text-lg font-semibold">Attack types</h2>
       <p className="mb-2 text-sm text-muted">
         Detections, counting repeats, across the {n.toLocaleString("en-US")} {n === 1 ? "alert" : "alerts"} in this view.
       </p>

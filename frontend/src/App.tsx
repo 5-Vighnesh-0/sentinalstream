@@ -4,7 +4,7 @@ import AlertFeed, { clockTime, type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
 import InEffectStrip from "./components/InEffectStrip";
-import { inEffect } from "./components/Level";
+import InkDefs from "./components/InkDefs";
 import Masthead from "./components/Masthead";
 import MutedPatterns from "./components/MutedPatterns";
 import PCAPUpload, { type Batch } from "./components/PCAPUpload";
@@ -133,7 +133,6 @@ export default function App() {
   const visible = showMuted ? inView : unmuted;
   // A High stays in the title until someone acknowledges it, in effect or not.
   const highUnacked = live.filter((a) => a.severity === "high" && a.suppressed_by === null && a.acknowledged_at === null).length;
-  const highInEffect = live.filter((a) => a.severity === "high" && a.suppressed_by === null && inEffect(a, clock)).length;
   const locked = !token || rejected;
 
   useEffect(() => {
@@ -199,8 +198,8 @@ export default function App() {
 
   return (
     <>
+      <InkDefs />
       <Masthead
-        highInEffect={locked ? 0 : highInEffect}
         nav={!locked && tabs.length > 1 && (
           <div role="tablist" aria-label="View" className="flex max-w-full gap-1 overflow-x-auto">
             {tabs.map(([id, label], i) => (
@@ -222,16 +221,16 @@ export default function App() {
         )}
         status={<StatusPill status={status} iface={iface} pps={traffic.length ? traffic[traffic.length - 1].pps : null} lastStatAt={lastStatAt} now={now} stale={stale} />}
       />
+      <main>
+      {!locked && (
+        <InEffectStrip alerts={visible} clock={clock} frozen={frozen} capture={view !== null} severity={severity} activeOnly={activeOnly} onFilter={filter} />
+      )}
       <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
       {iface === "lo" && (
         <p className="text-sm text-muted">Demo mode: capturing loopback traffic only, so alerts come from programs on this computer.</p>
       )}
       <Banners status={status} modelLoaded={modelLoaded} />
       <p aria-live="polite" className="sr-only">{announcement}</p>
-      <main className="space-y-4">
-        {!locked && (
-          <InEffectStrip alerts={visible} clock={clock} frozen={frozen} capture={view !== null} severity={severity} activeOnly={activeOnly} onFilter={filter} />
-        )}
         {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="space-y-4">
@@ -272,8 +271,8 @@ export default function App() {
             {!locked && <MutedPatterns rules={rules} onDelete={onDeleteRule} />}
           </div>
         </div>
-      </main>
       </div>
+      </main>
     </>
   );
 }
