@@ -27,6 +27,7 @@ colors:
   live-tint: "#ececea"
   stale: "#5c5c5c"
   stale-tint: "#f2f2f0"
+  row: "#ececea"
   changed: "#e0e0dc"
 typography:
   wordmark:
@@ -208,6 +209,7 @@ Achromatic warm greys from paper to ink, plus one vermilion seal and its tint an
 - **Charcoal Band** (`band`), **Band Text** (`band-text`), **Band Ash** (`band-muted`): the ink band's ground, its text, and its quiet text (empty counts, the expired note). When the band floods, quiet text turns white, because grey on vermilion falls below 4.5:1.
 - **Severity washes**: Medium is a grey wash (`sev-medium-tint` with `sev-medium-ink`; `sev-medium` for its icon and rail). Low is an ink outline on white (a 1px inset ink ring; `sev-low` for its icon and rail, `sev-low-tint` kept with `sev-low-ink`; `sev-low` for its icon and rail). The "no model loaded" banner uses the Medium pair.
 - **Connection status**: Live (`live` on `live-tint`) with its pulsing dot, Stale (`stale` on `stale-tint`) for the stale pill and a stopped chart's label. Both are greys: the pill says its state in words and an icon.
+- **Row Rule** (`row`, #ececea): table row dividers only, 3-7% darker than white so rows read as rows, not a grid. The table header has no fill band; its hairline rule underneath is the table's one strong line. Evidence and times are grey; the attack name, endpoints and repeat count carry the ink, and a count of 1 prints as a grey `×1` (a value is never left blank).
 - **Changed** (`changed`, #e0e0dc): the ground of a row that is new or grew, held until it is hovered for 700 ms or focused. Deeper than the paper ground of an open row, so the two never read alike.
 
 ### Named Rules

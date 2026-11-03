@@ -82,7 +82,7 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
   return (
     <tr
       data-flip-id={alert.id}
-      className={`border-t border-hairline max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-page" : ""}`}
+      className={`border-t border-row max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-page" : ""}`}
       onMouseEnter={() => (dwell.current = setTimeout(seen, SEEN_AFTER_MS))}
       onMouseLeave={() => clearTimeout(dwell.current)}
       onFocus={seen}
@@ -110,14 +110,14 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
         {/* each endpoint stays whole; a narrow row wraps only at the arrow */}
         <span className="whitespace-nowrap">{endpoint(alert.src_ip, alert.src_port)} <span aria-hidden>→</span></span>
         <span className="sr-only">to</span> <span className="whitespace-nowrap">{endpoint(alert.dst_ip, alert.dst_port)}</span>
-        {alert.count > 1 && <span className="ml-2 text-muted xl:hidden">×{alert.count}</span>}
+        <span className="ml-2 text-muted xl:hidden">×{alert.count}</span>
       </td>
-      <td className={`${cell} text-right font-mono text-[13px] max-xl:hidden`}>{alert.count > 1 ? `×${alert.count}` : ""}</td>
-      <td className={`${cell} whitespace-nowrap max-xl:order-5 max-xl:text-right max-xl:text-xs xl:text-right ${active || captureTime ? "" : "text-muted"}`} title={why}>
+      <td className={`${cell} text-right font-mono text-[13px] max-xl:hidden ${alert.count > 1 ? "" : "text-muted"}`}>×{alert.count}</td>
+      <td className={`${cell} whitespace-nowrap max-xl:order-5 max-xl:text-right max-xl:text-xs xl:text-right text-muted`} title={why}>
         {text}
       </td>
       <td className={`${cell} whitespace-nowrap max-xl:order-3 max-xl:text-right ${active || captureTime ? "" : "text-muted"}`}>
-        <span className="font-mono text-[13px]">{clockTime(alert.last_seen, captureTime)}</span>
+        <span className="font-mono text-[13px] text-muted">{clockTime(alert.last_seen, captureTime)}</span>
         {changed && (
           <span className="ml-2 rounded bg-surface px-1.5 py-0.5 text-xs font-semibold text-ink ring-1 ring-hairline">
             {changed === "new" ? "New" : "Updated"}
@@ -280,7 +280,7 @@ export default function AlertFeed(props: Props) {
       <div className="feed-scroll overflow-x-auto">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">Alerts, latest activity first. Each attack name opens the alert's details.</caption>
-          <thead className="bg-sunk text-xs text-muted max-xl:sr-only">
+          <thead className="border-b border-hairline text-xs text-muted max-xl:sr-only">
             <tr>
               <th className="py-2 pr-3 pl-3 font-medium">Level</th>
               <th className="py-2 pr-3 font-medium">Attack</th>
@@ -295,7 +295,7 @@ export default function AlertFeed(props: Props) {
               <Fragment key={a.id}>
                 {i === firstExpired && (
                   <tr className="max-xl:block">
-                    <td colSpan={6} className="border-t border-hairline bg-page px-3 py-1.5 text-xs font-medium text-muted max-xl:block">
+                    <td colSpan={6} className="border-t border-row bg-page px-3 py-1.5 text-xs font-medium text-muted max-xl:block">
                       Expired: no activity for 30 s
                     </td>
                   </tr>
@@ -313,7 +313,7 @@ export default function AlertFeed(props: Props) {
                 />
                 {a.id === openId && (
                   <tr className="max-xl:block">
-                    <td colSpan={6} className="border-t border-hairline bg-sunk p-3 max-xl:block">
+                    <td colSpan={6} className="border-t border-row bg-sunk p-3 max-xl:block">
                       <AlertDetail alert={a} clock={clock} onClose={close} onAck={props.onAck} onMute={props.onMute} />
                     </td>
                   </tr>
