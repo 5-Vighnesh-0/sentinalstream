@@ -11,12 +11,13 @@ type Props = {
   severity: string;
   activeOnly: boolean;
   onFilter: (severity: string, activeOnly: boolean) => void;
+  note?: string | null; // a fact about the capture (demo mode), set as the band's caption
 };
 
 /** The ink band: a full-bleed charcoal wash where the in-effect counts are the headline, set huge like a bulletin.
  *  While a High is in effect the vermilion seal floods across it (the page's one authored motion: a wipe from the left,
  *  a cross-fade with reduced motion). Pressing a level filters the feed to exactly what it counts. */
-export default function InEffectStrip({ alerts, clock, frozen, capture, severity, activeOnly, onFilter }: Props) {
+export default function InEffectStrip({ alerts, clock, frozen, capture, severity, activeOnly, onFilter, note }: Props) {
   const counted = capture ? alerts : alerts.filter((a) => inEffect(a, clock));
   const expired = alerts.length - counted.length;
   const asOf = new Date(clock).toLocaleTimeString();
@@ -94,6 +95,7 @@ export default function InEffectStrip({ alerts, clock, frozen, capture, severity
             );
           })}
         </div>
+        {note && <p className={`mt-5 text-sm ${quiet}`}>{note}</p>}
       </div>
       {/* torn brush edge where the band meets the paper */}
       <svg aria-hidden viewBox="0 0 1200 14" preserveAspectRatio="none" className="absolute bottom-0 left-0 h-3.5 w-full fill-page">

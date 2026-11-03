@@ -212,7 +212,7 @@ export default function App() {
                 onClick={() => viewBatch(id)}
                 onKeyDown={(e) => onTabKey(e, i)}
                 title={label}
-                className={`max-w-48 truncate rounded-md px-3 py-1.5 text-sm font-medium ${view === id ? "bg-accent text-white" : "text-white/75 hover:bg-white/10 hover:text-white"}`}
+                className={`max-w-48 truncate rounded-md px-3 py-1.5 text-sm font-medium ${view === id ? "bg-accent text-white" : "text-muted hover:bg-sunk hover:text-ink"}`}
               >
                 {label}
               </button>
@@ -223,12 +223,18 @@ export default function App() {
       />
       <main>
       {!locked && (
-        <InEffectStrip alerts={visible} clock={clock} frozen={frozen} capture={view !== null} severity={severity} activeOnly={activeOnly} onFilter={filter} />
+        <InEffectStrip
+          alerts={visible}
+          clock={clock}
+          frozen={frozen}
+          capture={view !== null}
+          severity={severity}
+          activeOnly={activeOnly}
+          onFilter={filter}
+          note={iface === "lo" ? "Demo mode: capturing loopback traffic only, so alerts come from programs on this computer." : null}
+        />
       )}
       <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
-      {iface === "lo" && (
-        <p className="text-sm text-muted">Demo mode: capturing loopback traffic only, so alerts come from programs on this computer.</p>
-      )}
       <Banners status={status} modelLoaded={modelLoaded} />
       <p aria-live="polite" className="sr-only">{announcement}</p>
         {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}

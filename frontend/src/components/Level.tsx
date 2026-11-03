@@ -8,7 +8,7 @@ export type Level = (typeof LEVELS)[number];
 export const LEVEL = {
   high: { label: "High", Icon: ShieldAlert, solid: "bg-sev-high text-white", tint: "bg-sev-high-tint text-sev-high-ink", icon: "text-sev-high" },
   medium: { label: "Medium", Icon: TriangleAlert, solid: "bg-sev-medium text-white", tint: "bg-sev-medium-tint text-sev-medium-ink", icon: "text-sev-medium" },
-  low: { label: "Low", Icon: Info, solid: "bg-sev-low text-white", tint: "bg-sev-low-tint text-sev-low-ink", icon: "text-sev-low" },
+  low: { label: "Low", Icon: Info, solid: "bg-sev-low text-white", tint: "bg-surface text-ink ring-1 ring-inset ring-ink", icon: "text-sev-low" }, // Low is an ink outline
 } as const;
 
 /** Live alerts only: an uploaded capture's alerts are history, never "in effect". `clock` stops while data is not

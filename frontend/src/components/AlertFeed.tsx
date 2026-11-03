@@ -82,7 +82,7 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
   return (
     <tr
       data-flip-id={alert.id}
-      className={`border-t border-hairline max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-sunk" : ""}`}
+      className={`border-t border-hairline max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-page" : ""}`}
       onMouseEnter={() => (dwell.current = setTimeout(seen, SEEN_AFTER_MS))}
       onMouseLeave={() => clearTimeout(dwell.current)}
       onFocus={seen}
