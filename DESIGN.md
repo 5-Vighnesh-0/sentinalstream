@@ -179,10 +179,10 @@ Every alert reads as a bulletin in effect. Its level comes first, as a word plus
 
 The top of the page is a clean white masthead strip (wordmark, view tabs, connection status). Under it sits the ink band, a full-bleed charcoal wash where the in-effect counts are the headline, set huge in a display face. While a High is in effect the seal floods across the band from the left. Below the band is a 2:1 grid with the alert table on the left and a stack of evidence panels on the right. State is carried by form as well as tone. A solid chip means in effect and an outline chip means expired, a draining rail counts down the window, and a row whose count grew stays lit until someone looks at it. Every number in the data is mono, and every score names the detector that produced it. A fact about the capture (demo mode on loopback) is set as the band's caption, below the counts, in the band's quiet text; the selected view tab is inked and unselected tabs are muted text that turn ink on a sunk hover.
 
-Brushwork sits on frames, never on data. Panel borders and primary-button fills are drawn on a separate layer run through an SVG displacement filter, so their edges look inked while the text inside stays crisp. Light only. Public Sans, JetBrains Mono and Montserrat are self-hosted, icons are lucide-react, motion is GSAP, and nothing loads from outside (strict CSP; the textures are inline SVG filters).
+Brushwork is visible but rare, and never on data. It lives in two places: the ink band (grain and torn edge) and the Alerts panel, whose frame is a 2.5px ink stroke drawn on a separate layer run through an SVG displacement filter, so its edge looks inked while the table stays crisp. Every other panel has a plain hairline frame, and headings carry no strokes. Light only. Public Sans, JetBrains Mono and Montserrat are self-hosted, icons are lucide-react, motion is GSAP, and nothing loads from outside (strict CSP; the textures are inline SVG filters).
 
 **Key Characteristics:**
-- Warm paper page, white panels in a brushed 1.5px ink frame, ink text, no shadows.
+- Warm paper page, white panels in hairline frames (the Alerts panel alone in a brushed ink frame), ink text, no shadows.
 - Black and white. Pressables are inked. Vermilion is the seal, reserved for High.
 - Severity by word, icon shape and form: a High is solid vermilion, a Medium is a grey wash, a Low is an ink outline.
 - A charcoal ink band under a white masthead carries the counts in Montserrat 800 and floods vermilion while a High is in effect.
@@ -193,7 +193,7 @@ Brushwork sits on frames, never on data. Panel borders and primary-button fills 
 Achromatic warm greys from paper to ink, plus one vermilion seal and its tint and ink.
 
 ### Primary
-- **Ink** (`accent`, the same value as `ink`): pressables are inked. It fills the selected view tab, the pressed state of the Needs attention and Show muted toggles, and the brushed fill of the primary buttons (Analyse, Save, Acknowledge). It also sets the text of quiet buttons (Clear filters, Export, Cancel, Browse files, Mute), the drop zone while dragging, the 2px focus outline, the caret and native accent-color. **Ink Tint** (`accent-tint`) is the hover ground for quiet buttons, the drop zone while dragging, and the text selection colour.
+- **Ink** (`accent`, the same value as `ink`): pressables are inked. It fills the selected view tab, the pressed state of the Needs attention and Show muted toggles, and the plain fill of the primary buttons (Analyse, Save, Acknowledge). It also sets the text of quiet buttons (Clear filters, Export, Cancel, Choose file, Mute), the 2px focus outline, the caret and native accent-color. **Ink Tint** (`accent-tint`) is the hover ground for quiet buttons, the upload panel's ground while a file is dragged over it, and the text selection colour.
 
 ### Secondary (the seal)
 - **Vermilion Seal** (`sev-high`): an in-effect High chip, the High icon in an expired chip, the High rail, and the flood layer of the ink band while a High is in effect. **Seal Tint / Seal Ink** (`sev-high-tint`, `sev-high-ink`) pair for tinted High chips (history). Seal Ink also sets error text and failed upload status.
@@ -201,13 +201,13 @@ Achromatic warm greys from paper to ink, plus one vermilion seal and its tint an
 ### Neutral
 - **Paper** (`page`): the page, the "Expired" divider row, and the fill of the torn edge where the band meets the paper.
 - **White Panel** (`surface`): the masthead, panels, inputs, outline chips.
-- **Sunk Wash** (`sunk`): table header, detail well, hover ground for neutral icon buttons, offline pill and banner, disabled primary fill. At 60% opacity it is the chart ground.
-- **Ink** (`ink`): text, panel frames, the brush-title stroke, both chart series, bar labels.
+- **Sunk Wash** (`sunk`): detail well, hover ground for neutral icon buttons and Choose file, offline pill and banner, disabled primary fill.
+- **Ink** (`ink`): text, the Alerts panel's brushed frame, the Choose file button's border, both chart series, bar labels.
 - **Ash** (`muted`): secondary text, expired-row text, axis ticks.
-- **Hairline** (`hairline`): masthead rule, row rules, chart grid, outline chips, rail track.
-- **Edge** (`edge`): borders on inputs, selects and the drop zone, rings on quiet bordered buttons, scrollbars, the frozen rail (3.3:1 on white).
+- **Hairline** (`hairline`): panel frames, masthead rule, the table header rule, the traffic chart grid, outline chips, rail track.
+- **Edge** (`edge`): borders on inputs and selects, rings on quiet bordered buttons, scrollbars, the frozen rail (3.3:1 on white).
 - **Charcoal Band** (`band`), **Band Text** (`band-text`), **Band Ash** (`band-muted`): the ink band's ground, its text, and its quiet text (empty counts, the expired note). When the band floods, quiet text turns white, because grey on vermilion falls below 4.5:1.
-- **Severity washes**: Medium is a grey wash (`sev-medium-tint` with `sev-medium-ink`; `sev-medium` for its icon and rail). Low is an ink outline on white (a 1px inset ink ring; `sev-low` for its icon and rail, `sev-low-tint` kept with `sev-low-ink`; `sev-low` for its icon and rail). The "no model loaded" banner uses the Medium pair.
+- **Severity washes**: Medium is a grey wash with a 1px inset `sev-medium` ring, so it holds its edge against the white panel (`sev-medium-tint` with `sev-medium-ink`; `sev-medium` for its icon and rail). Low is an ink outline on white (a 1px inset ink ring; `sev-low` for its icon and rail, `sev-low-tint` kept with `sev-low-ink`). The "no model loaded" banner uses the Medium pair.
 - **Connection status**: Live (`live` on `live-tint`) with its pulsing dot, Stale (`stale` on `stale-tint`) for the stale pill and a stopped chart's label. Both are greys: the pill says its state in words and an icon.
 - **Row Rule** (`row`, #ececea): table row dividers only, 3-7% darker than white so rows read as rows, not a grid. The table header has no fill band; its hairline rule underneath is the table's one strong line. Evidence and times are grey; the attack name, endpoints and repeat count carry the ink, and a count of 1 prints as a grey `×1` (a value is never left blank).
 - **Changed** (`changed`, #e0e0dc): the ground of a row that is new or grew, held until it is hovered for 700 ms or focused. Deeper than the paper ground of an open row, so the two never read alike.
@@ -232,7 +232,7 @@ Achromatic warm greys from paper to ink, plus one vermilion seal and its tint an
 - **Band Count** (Montserrat 800, 48px on phones and 72px from 640px, line-height 1): the in-effect number for each level in the band.
 - **Band Heading** (Montserrat 700, 14px, 0.18em, uppercase): "In effect now", "High in effect", "In effect as of HH:MM:SS", "In this capture".
 - **Band Label** (Public Sans 600, 12px, 0.16em, uppercase): the level word with its icon above each band count.
-- **Title** (Public Sans 600, 18px): panel headings (Alerts, Packets per second, Attack types, Analyse a capture file, Muted patterns), each with a brushstroke underline.
+- **Title** (Public Sans 600, 18px): panel headings (Alerts, Attack types, Analyse a capture file, Muted patterns). No underline strokes. The traffic chart's label is 14px sans.
 - **Body** (400, 14px): table cells, panel descriptions, banners, buttons (500 to 600 on controls). `p` and `li` use `text-wrap: pretty`.
 - **Label** (500, 12px): filter labels, table header, detail `dt` labels, chip text (600), rail text.
 - **Data** (mono 400, 13px): endpoints, times, repeat counts, file names, chart labels. Chart ticks are mono at 12px.
@@ -254,23 +254,23 @@ From 1280px the alert table has six columns: Level | Attack | Source → destina
 
 ## Elevation & Depth
 
-Flat. There are no box shadows anywhere. Depth is tonal (paper, then white panel, then sunk wells) and drawn: panels sit in a brushed ink frame, and the band is the one dark mass on the page. The band carries a faint SVG grain (`#ink-grain`, white noise at 9% alpha). Rings stand in for borders on pills, quiet buttons and banners.
+Flat. There are no box shadows anywhere. Depth is tonal (paper, then white panel, then sunk wells) and drawn: the band is the one dark mass on the page, and the Alerts panel the one brushed frame. The band carries a faint SVG grain (`#ink-grain`, white noise at 9% alpha). Rings stand in for borders on pills, quiet buttons and banners.
 
 ### Named Rules
 **The Ink Not Shadow Rule.** Separate surfaces with a drawn ink frame, a 1px hairline or a tonal step, never with a shadow.
 
-**The Brush On Frames Rule.** Brushwork (the `#ink-rough` displacement filter) is applied only to a separate border or fill layer behind a frame or primary button. Never filter text, numbers, icons, chips or charts.
+**The Brush On Frames Rule.** Brushwork (the `#ink-brush` displacement filter: low-frequency turbulence, scale 4) is applied only to the separate frame layer of the Alerts panel (`.ink-panel-brush`). Never filter text, numbers, icons, chips, buttons or charts, and don't spread it to other panels: rare is what keeps it visible.
 
 ## Shapes
 
-Nearly square, drawn by hand. Panel frames and primary-button fills have a 2px radius under the brush filter, and their edges fray slightly. Chips, inputs, selects and quiet buttons use 4px. View tabs, the detail card, banners, the mute editor and the drop zone use 6px. The status pill is fully round from 640px (12px on phones, where it can wrap). Bars have a 3px radius on the value end only. The drop zone is the only dashed border (2px). Two drawn shapes recur: the torn brushstroke along the band's bottom edge, and a 44 by 7px brushstroke under each panel title.
+Nearly square. Panel frames and primary-button fills have a 2px radius; the Alerts frame frays under the brush filter. Chips, inputs, selects and quiet buttons use 4px. View tabs, the detail card, banners and the mute editor use 6px. The status pill is fully round from 640px (12px on phones, where it can wrap). Bars have a 3px radius on the value end only. There are no dashed borders. One drawn shape: the torn brushstroke along the band's bottom edge.
 
 ## Components
 
 ### Buttons
-- **Shape:** brushed 2px fill for primary, 4px for quiet.
-- **Primary:** an ink fill drawn on a filtered layer behind white 14px semibold text, 8px by 12 to 16px (6px by 12px in the detail and mute editor). Hover drops the fill to 86% opacity. Disabled fills with sunk and muted text.
-- **Quiet:** ink text, no fill, at least 36px tall, accent-tint ground on hover. The bordered variant (Export, Browse files, Mute) adds a 1px edge ring. Toggles (Needs attention, Show muted) are bordered quiet buttons that fill with ink and white text when pressed.
+- **Shape:** 2px plain ink fill for primary, 4px for quiet.
+- **Primary:** a plain ink fill with white 14px semibold text, 8px by 12 to 16px (6px by 12px in the detail and mute editor). Hover lifts the fill to #2e2e2e. Disabled fills with sunk and muted text.
+- **Quiet:** ink text, no fill, at least 36px tall, accent-tint ground on hover. The bordered variant (Export, Mute) adds a 1px edge ring; Choose file has a 1px ink border. Toggles (Needs attention, Show muted) are bordered quiet buttons that fill with ink and white text when pressed.
 - **Icon:** 32px square, muted, sunk on hover (close details, delete rule).
 - **Focus:** a 2px ink outline with a 2px offset everywhere.
 
@@ -282,13 +282,14 @@ Nearly square, drawn by hand. Panel frames and primary-button fills have a 2px r
 - **Corner Style:** 2px, brushed.
 - **Background:** white on paper.
 - **Shadow Strategy:** none (see Elevation & Depth).
-- **Border:** a 1.5px ink border on a separate layer through `#ink-rough`.
-- **Internal Padding:** 16px. Panel titles are 18px semibold with the brushstroke underline, plus an optional 14px muted line below.
+- **Border:** a 1px hairline. The Alerts panel instead draws a 2.5px ink border on a separate layer through `#ink-brush`.
+- **Internal Padding:** 16px. Panel titles are 18px semibold, plus an optional 14px muted line below.
+- **Upload panel:** no drop box. The whole panel takes a dropped file (its ground turns accent-tint and the line reads "Drop it here to choose it."). One wrapping row: a bordered Choose file button, the chosen name in mono (or "No file chosen" in muted), and the primary Analyse button, shown only once a valid file is chosen.
 
 ### Inputs / Fields
 - **Style:** 1px edge border, white, 4px radius, at least 36px tall. The token input is mono.
 - **Focus:** the global ink outline.
-- **Error:** a 14px message in `sev-high-ink`, announced with role=alert. The submit button is disabled while the file is invalid.
+- **Error:** a 14px message in `sev-high-ink`, announced with role=alert. The upload's Analyse button is hidden while the file is invalid. A failed acknowledgement or rule delete says so in visible Seal Ink text; success stays a screen-reader announcement.
 
 ### Navigation
 - **Masthead:** a white strip with the Montserrat wordmark, the view tabs and the status pill.
@@ -296,18 +297,18 @@ Nearly square, drawn by hand. Panel frames and primary-button fills have a 2px r
 - **Status pill:** 14px medium, an icon plus words. Live is a grey tint with a pulsing ink dot. Stale is a paler tint. Offline is sunk with an edge ring. Waiting is white with a hairline ring. The visible text changes every second, so the live region gets only the state word.
 
 ### The Ink Band (signature)
-A full-bleed charcoal band, directly under the masthead, with an inline SVG grain and a torn brushstroke bottom edge filled with paper. It shows a heading and a note, then three level counts in Montserrat 800. A count with nothing in effect, or any count while data is frozen, turns band-ash at 70% opacity. Each count is a toggle filter (`aria-pressed`): hover lifts it with a 5% white ground, and pressed underlines it (2px, 8px offset). The counts tick in from above when they change (`count-tick`, 0.25s, `cubic-bezier(0.16, 1, 0.3, 1)`).
+A full-bleed charcoal band, directly under the masthead, with an inline SVG grain and a torn brushstroke bottom edge filled with paper. It shows a heading and a note, then three level counts in Montserrat 800. Counts are 36px (48px from 640px) while nothing High is up, so a lone Low never becomes the loudest thing on a quiet page, and 48px (72px from 640px) while a High is in effect. Only a true zero turns band-ash at 70% opacity; a count held while frozen keeps its ink. Focus rings on the band are band-text, not ink. Each count is a toggle filter (`aria-pressed`): hover lifts it with a 5% white ground, and pressed underlines it (2px, 8px offset). The counts tick in from above when they change (`count-tick`, 0.25s, `cubic-bezier(0.16, 1, 0.3, 1)`).
 
-**The flood.** While a High is in effect (live, not frozen, not a capture), a vermilion layer wipes across the band from the left by animating `clip-path` (0.7s `expo.out`) and the heading reads "High in effect". It exits to the right, faster (0.35s `power2.in`). With reduced motion it cross-fades in 0.2s. While flooded, the band's quiet text turns white.
+**The flood.** While a High is in effect (live or frozen, never a capture; a dropped connection must not look like an all-clear, so a frozen flood just holds still), a vermilion layer wipes across the band from the left by animating `clip-path` (0.7s `expo.out`) and the heading reads "High in effect". It exits to the right, faster (0.35s `power2.in`). With reduced motion it cross-fades in 0.2s. While flooded, the band's quiet text turns white.
 
 ### Alert Row and Expiry Rail (signature)
-Expired rows mute their text, and one "Expired: no activity for 30 s" divider row on the paper ground separates them from live ones. An in-effect row shows a 48 by 2px rail in its level tone that drains over the window with a 1s linear `scaleX` transition, with "N s left" beside it. The rail turns edge grey and says "held" while frozen. A new or grown row takes the `changed` ground and a hairline-ringed "New" or "Updated" tag until it is seen. When activity reorders the feed, rows slide to their new place with GSAP Flip (0.45s `expo.out`), and new rows fade down 8px into place (0.3s). The attack name is an underlined disclosure button (hairline underline, ink on hover) that opens the detail in place. Flip and the rail transition are off under reduced motion.
+Expired rows mute their text, and one "Expired: no activity for 30 s" divider row on the paper ground separates them from live ones. An in-effect row shows a 48 by 2px rail in its level tone that drains over the window with a 1s linear `scaleX` transition, with "N s left" beside it. The rail turns edge grey and says "held" while frozen. A new or grown row takes the `changed` ground and a plain 12px semibold "New" or "Updated" word until it is seen (hovered or focused for 700 ms; tabbing past does not count). When activity reorders the feed, rows slide to their new place with GSAP Flip (0.45s `expo.out`), and new rows fade down 8px into place (0.3s). The attack name is a disclosure button, underlined only on hover, that opens the detail in place. Flip and the rail transition are off under reduced motion.
 
 ### Evidence Detail
 A white 6px card in a sunk well under its row. Labelled segments sit in a 2-column grid (3 from 640px) with hairline rules, a 12px muted label over a 14px value, and spans chosen so no row ends in an empty cell. Evidence always spells out its detector's meaning. Acknowledge is a primary button and Mute is a bordered quiet button.
 
 ### Charts
-Both charts share one ground, axis style and ink: sunk at 60% for the ground, a hairline grid, muted 12px ticks, and an ink series (a 1.75px line, or 16px bars with mono value labels). No legends, no animation, no colour. A stale traffic chart drops to 50% opacity and its label says when the data stopped.
+Both charts sit straight on the panel, with no box or ground: muted 12px ticks and an ink series (a 1.75px straight-segment line over a hairline grid, or 16px bars with mono value labels and no grid). No legends, no animation, no colour. A stale traffic chart drops to 50% opacity and its label says when the data stopped.
 
 ## Do's and Don'ts
 
@@ -315,7 +316,7 @@ Both charts share one ground, axis style and ink: sunk at 60% for the ground, a 
 - **Do** put the level first, as a word plus its icon, and keep vermilion for High alone.
 - **Do** show state by form as well as tone: solid, wash or outline chips, the draining rail, the held "New / Updated" marks, and the flooded band.
 - **Do** draw pressables in ink (`accent`, #141414): an ink fill for primary and selected, ink text for quiet.
-- **Do** put brushwork on a separate frame or fill layer through `#ink-rough`, and keep text and data crisp.
+- **Do** keep brushwork to the band and the Alerts panel's frame layer (`#ink-brush`), and keep text and data crisp.
 - **Do** keep Montserrat to the ink band and the wordmark.
 - **Do** give every animation a reduced-motion path: a cross-fade for the flood, and no Flip, rail transition or count tick.
 - **Do** update the literal hex constants in both chart files whenever an `index.css` colour token changes.

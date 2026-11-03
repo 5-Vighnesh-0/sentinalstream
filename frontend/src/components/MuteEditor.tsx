@@ -41,7 +41,7 @@ export default function MuteEditor({ alert, onSave, onCancel }: Props) {
           <span className="w-36 text-muted">{LABEL[f]}</span>
           <label className="inline-flex items-center gap-1.5">
             <input type="radio" name={`mute-${f}`} checked={!any[f]} onChange={() => setAny({ ...any, [f]: false })} />
-            <span className="font-mono text-[13px]">{value(f)}</span>
+            <span className={f === "attack_type" ? "" : "font-mono text-[13px]"}>{value(f)}</span>
           </label>
           <label className="inline-flex items-center gap-1.5">
             <input type="radio" name={`mute-${f}`} checked={any[f]} onChange={() => setAny({ ...any, [f]: true })} />

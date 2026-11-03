@@ -1,4 +1,4 @@
-import { FileUp, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import { API_URL } from "../config";
 import { authHeader } from "../token";
@@ -73,42 +73,45 @@ export default function PCAPUpload({ batches, onUploaded, token, onRejected }: P
 
   const ids = Object.keys(batches).map(Number).sort((a, b) => b - a);
   return (
-    <section className="ink-panel bg-surface p-4" aria-labelledby="upload-heading">
-      <h2 id="upload-heading" className="brush-title text-lg font-semibold">Analyse a capture file</h2>
-      <p className="mt-1 text-sm text-muted">Its alerts open in their own tab, apart from live traffic.</p>
-      <form onSubmit={upload} className="mt-3 space-y-3">
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            choose(e.dataTransfer.files[0] ?? null);
-          }}
-          className={`flex flex-col items-center gap-2 rounded-md border-2 border-dashed px-4 py-5 text-center ${dragging ? "border-accent bg-accent-tint" : "border-edge"}`}
-        >
-          <FileUp aria-hidden size={22} className="text-muted" />
-          <p className="text-sm">{file ? <span className="font-mono">{file.name}</span> : "Drop a .pcap or .pcapng here, up to 50 MB"}</p>
-          <label className="cursor-pointer rounded border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-tint has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent">
-            Browse files
-            <input ref={input} type="file" accept=".pcap,.pcapng" aria-label="Capture file" className="sr-only" onChange={(e) => choose(e.target.files?.[0] ?? null)} />
-          </label>
-        </div>
-        <button
-          type="submit"
-          disabled={!file || !!error || busy}
-          className="inline-flex w-full items-center justify-center gap-2 ink-btn rounded px-3 py-2 text-sm font-semibold text-white"
-        >
-          {busy && <LoaderCircle aria-hidden size={16} className="animate-spin motion-reduce:animate-none" />}
-          {busy ? "Uploading…" : "Analyse"}
-        </button>
+    <section
+      className={`ink-panel p-4 ${dragging ? "bg-accent-tint" : "bg-surface"}`}
+      aria-labelledby="upload-heading"
+      // the whole panel takes a dropped file: no dashed drop box needed
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        choose(e.dataTransfer.files[0] ?? null);
+      }}
+    >
+      <h2 id="upload-heading" className="text-lg font-semibold">Analyse a capture file</h2>
+      <p className="mt-1 text-sm text-muted">
+        {dragging ? "Drop it here to choose it." : "A .pcap or .pcapng up to 50 MB, or drop one on this panel. Its alerts open in their own tab."}
+      </p>
+      <form onSubmit={upload} className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <label className="min-h-9 cursor-pointer rounded border border-ink px-3 py-1.5 text-sm font-medium hover:bg-sunk has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent">
+          Choose file
+          <input ref={input} type="file" accept=".pcap,.pcapng" aria-label="Capture file" className="sr-only" onChange={(e) => choose(e.target.files?.[0] ?? null)} />
+        </label>
+        <span className={`min-w-0 flex-1 truncate text-sm ${file ? "font-mono text-[13px]" : "text-muted"}`} title={file?.name}>
+          {file ? file.name : "No file chosen"}
+        </span>
+        {file && !error && (
+          <button type="submit" disabled={busy} className="ink-btn inline-flex min-h-9 items-center gap-2 rounded px-4 text-sm font-semibold">
+            {busy && <LoaderCircle aria-hidden size={16} className="animate-spin motion-reduce:animate-none" />}
+            {busy ? "Uploading…" : "Analyse"}
+          </button>
+        )}
       </form>
       {error && <p role="alert" className="mt-2 text-sm text-sev-high-ink">{error}</p>}
       {ids.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-hairline pt-3 text-sm">
+        <ul className="mt-3 space-y-1 border-t border-row pt-3 text-sm">
           {ids.map((id) => (
             <li key={id} className="flex items-baseline justify-between gap-3">
               <span className="truncate font-mono text-[13px]" title={batches[id].name}>{batches[id].name}</span>

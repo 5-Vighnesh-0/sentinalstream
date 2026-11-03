@@ -22,7 +22,8 @@ export default function InEffectStrip({ alerts, clock, frozen, capture, severity
   const expired = alerts.length - counted.length;
   const asOf = new Date(clock).toLocaleTimeString();
   const highs = counted.filter((a) => a.severity === "high").length;
-  const raised = !capture && !frozen && highs > 0;
+  // Still raised while frozen: a dropped connection must never look like an all-clear. The flood just holds still.
+  const raised = !capture && highs > 0;
   const flood = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -71,7 +72,7 @@ export default function InEffectStrip({ alerts, clock, frozen, capture, severity
             const n = counted.filter((a) => a.severity === level).length;
             const { label, Icon } = LEVEL[level];
             const pressed = severity === level && activeOnly === !capture;
-            const empty = n === 0 || frozen;
+            const empty = n === 0; // a held count is still a count: only a true zero is dimmed
             return (
               <button
                 key={level}
@@ -87,7 +88,8 @@ export default function InEffectStrip({ alerts, clock, frozen, capture, severity
                 </span>
                 <span
                   key={n}
-                  className={`count-tick font-display text-5xl leading-none font-extrabold sm:text-7xl ${empty ? `${quiet} opacity-70` : "text-white"}`}
+                  // Big while a High is up; calm otherwise, so a lone Low never becomes the loudest thing on a quiet page.
+                  className={`count-tick font-display leading-none font-extrabold ${raised ? "text-5xl sm:text-7xl" : "text-4xl sm:text-5xl"} ${empty ? `${quiet} opacity-70` : level === "high" || raised ? "text-white" : "text-band-text"}`}
                 >
                   {n}
                 </span>

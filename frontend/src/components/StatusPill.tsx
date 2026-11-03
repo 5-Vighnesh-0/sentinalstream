@@ -1,7 +1,7 @@
 import { CircleDot, KeyRound, PauseCircle, WifiOff } from "lucide-react";
 import type { SocketStatus } from "../useWebSocket";
 
-type Props = { status: SocketStatus; iface: string | null; pps: number | null; lastStatAt: number | null; now: number; stale: boolean };
+type Props = { status: SocketStatus; iface: string | null; lastStatAt: number | null; now: number; stale: boolean };
 
 function ago(ms: number) {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -9,7 +9,7 @@ function ago(ms: number) {
 }
 
 /** Live, stale or offline, said in words and an icon, never colour alone. Announced politely when it changes. */
-export default function StatusPill({ status, iface, pps, lastStatAt, now, stale }: Props) {
+export default function StatusPill({ status, iface, lastStatAt, now, stale }: Props) {
   let look = "bg-surface text-muted ring-1 ring-hairline";
   let icon = <KeyRound aria-hidden size={14} />;
   let text = "Waiting for the dashboard token";
@@ -32,7 +32,7 @@ export default function StatusPill({ status, iface, pps, lastStatAt, now, stale 
     look = "bg-live-tint text-live";
     icon = <span aria-hidden className="dot-live inline-block size-2 rounded-full bg-live" />;
     state = "Live";
-    text = ["Live", iface && `capturing on ${iface}`, pps !== null && `${Math.round(pps).toLocaleString()} packets/s`, lastStatAt && `data ${ago(now - lastStatAt)}`].filter(Boolean).join(" · ");
+    text = ["Live", iface && `capturing on ${iface}`, lastStatAt && `data ${ago(now - lastStatAt)}`].filter(Boolean).join(" · ");
   }
   return (
     <p className={`inline-flex items-center gap-2 rounded-xl px-3 py-1 text-sm font-medium sm:rounded-full ${look}`}>

@@ -85,7 +85,9 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
       className={`border-t border-row max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-page" : ""}`}
       onMouseEnter={() => (dwell.current = setTimeout(seen, SEEN_AFTER_MS))}
       onMouseLeave={() => clearTimeout(dwell.current)}
-      onFocus={seen}
+      // focus gets the same dwell as hover: tabbing past rows must not erase their New/Updated marks
+      onFocus={() => (dwell.current = setTimeout(seen, SEEN_AFTER_MS))}
+      onBlur={() => clearTimeout(dwell.current)}
     >
       <td className={`${cell} xl:pl-3`}>
         <LevelChip level={alert.severity} state={captureTime ? "history" : active ? "active" : "expired"} />
@@ -100,7 +102,7 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
           }}
           aria-expanded={open}
           aria-label={`${LEVEL[alert.severity].label} ${typeLabel(alert.attack_type)} from ${endpoint(alert.src_ip, alert.src_port)} at ${clockTime(alert.last_seen, captureTime)}: details`}
-          className={`-my-1 inline-flex min-h-7 items-center gap-1 rounded py-1 underline decoration-hairline underline-offset-4 hover:decoration-ink ${(active || captureTime) && !alert.acknowledged_at ? "font-semibold text-ink" : "text-muted"}`}
+          className={`-my-1 inline-flex min-h-7 items-center gap-1 rounded py-1 hover:underline hover:underline-offset-4 ${(active || captureTime) && !alert.acknowledged_at ? "font-semibold text-ink" : "text-muted"}`}
         >
           {typeLabel(alert.attack_type)}
           <Chevron aria-hidden size={14} className="text-muted" />
@@ -119,7 +121,7 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
       <td className={`${cell} whitespace-nowrap max-xl:order-3 max-xl:text-right ${active || captureTime ? "" : "text-muted"}`}>
         <span className="font-mono text-[13px] text-muted">{clockTime(alert.last_seen, captureTime)}</span>
         {changed && (
-          <span className="ml-2 rounded bg-surface px-1.5 py-0.5 text-xs font-semibold text-ink ring-1 ring-hairline">
+          <span className="ml-2 text-xs font-semibold text-ink">
             {changed === "new" ? "New" : "Updated"}
           </span>
         )}
@@ -219,10 +221,10 @@ export default function AlertFeed(props: Props) {
   }
 
   return (
-    <section className="ink-panel bg-surface" aria-labelledby="alerts-heading">
+    <section className="ink-panel ink-panel-brush bg-surface" aria-labelledby="alerts-heading">
       <div className="flex flex-wrap items-end gap-3 px-4 pt-4 pb-3">
         <div className="mr-auto">
-          <h2 id="alerts-heading" className="brush-title text-lg font-semibold">Alerts</h2>
+          <h2 id="alerts-heading" className="text-lg font-semibold">Alerts</h2>
           <p className="text-sm text-muted">
             Showing {shown.length.toLocaleString("en-US")} of {matching.length.toLocaleString("en-US")}
             {activeOnly ? ", in effect only" : ", latest activity first"}

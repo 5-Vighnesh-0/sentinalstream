@@ -219,7 +219,7 @@ export default function App() {
             ))}
           </div>
         )}
-        status={<StatusPill status={status} iface={iface} pps={traffic.length ? traffic[traffic.length - 1].pps : null} lastStatAt={lastStatAt} now={now} stale={stale} />}
+        status={<StatusPill status={status} iface={iface} lastStatAt={lastStatAt} now={now} stale={stale} />}
       />
       <main>
       {!locked && (

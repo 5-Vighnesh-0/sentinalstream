@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { typeLabel } from "./Level";
 import type { AlertItem } from "./AlertFeed";
 
@@ -15,17 +15,16 @@ export default memo(function AttackDistribution({ alerts }: { alerts: AlertItem[
 
   return (
     <section className="ink-panel bg-surface p-4" aria-labelledby="types-heading">
-      <h2 id="types-heading" className="brush-title text-lg font-semibold">Attack types</h2>
+      <h2 id="types-heading" className="text-lg font-semibold">Attack types</h2>
       <p className="mb-2 text-sm text-muted">
         Detections, counting repeats, across the {n.toLocaleString("en-US")} {n === 1 ? "alert" : "alerts"} in this view.
       </p>
       {data.length === 0 ? (
         <p className="py-4 text-sm text-muted">No detections in this view yet.</p>
       ) : (
-        <div style={{ height: Math.max(72, data.length * 32) + 16 }} className="rounded bg-sunk/60 py-2" role="img" aria-label={data.map((d) => `${d.type} ${d.detections}`).join(", ")}>
+        <div style={{ height: Math.max(72, data.length * 32) + 16 }} role="img" aria-label={data.map((d) => `${d.type} ${d.detections}`).join(", ")}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} layout="vertical" margin={{ top: 0, right: 44, bottom: 0, left: 0 }} accessibilityLayer={false}>
-              <CartesianGrid horizontal={false} stroke={HAIRLINE} />
               <XAxis type="number" hide />
               <YAxis type="category" dataKey="type" width={96} tick={{ fill: MUTED, fontSize: 12 }} tickLine={false} axisLine={{ stroke: HAIRLINE }} />
               <Tooltip cursor={{ fill: SUNK }} formatter={(v) => [Number(v).toLocaleString(), "detections"]} />
