@@ -53,7 +53,7 @@ export default function InEffectStrip({ alerts, clock, frozen, capture, severity
                 <Icon aria-hidden size={15} strokeWidth={2.25} className={n === 0 || frozen ? icon : undefined} />
                 {label}
               </span>
-              <span className="font-mono text-2xl leading-none font-semibold">{n}</span>
+              <span key={n} className="count-tick font-mono text-2xl leading-none font-semibold">{n}</span>
             </button>
           );
         })}

@@ -4,6 +4,8 @@ import AlertFeed, { clockTime, type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
 import InEffectStrip from "./components/InEffectStrip";
+import { inEffect } from "./components/Level";
+import Masthead from "./components/Masthead";
 import MutedPatterns from "./components/MutedPatterns";
 import PCAPUpload, { type Batch } from "./components/PCAPUpload";
 import StatusPill from "./components/StatusPill";
@@ -131,6 +133,7 @@ export default function App() {
   const visible = showMuted ? inView : unmuted;
   // A High stays in the title until someone acknowledges it, in effect or not.
   const highUnacked = live.filter((a) => a.severity === "high" && a.suppressed_by === null && a.acknowledged_at === null).length;
+  const highInEffect = live.filter((a) => a.severity === "high" && a.suppressed_by === null && inEffect(a, clock)).length;
   const locked = !token || rejected;
 
   useEffect(() => {
@@ -195,10 +198,10 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-hairline pb-3">
-        <h1 className="text-[22px] font-bold tracking-tight">SentinelStream</h1>
-        {!locked && tabs.length > 1 && (
+    <>
+      <Masthead
+        highInEffect={locked ? 0 : highInEffect}
+        nav={!locked && tabs.length > 1 && (
           <div role="tablist" aria-label="View" className="flex max-w-full gap-1 overflow-x-auto">
             {tabs.map(([id, label], i) => (
               <button
@@ -210,17 +213,16 @@ export default function App() {
                 onClick={() => viewBatch(id)}
                 onKeyDown={(e) => onTabKey(e, i)}
                 title={label}
-                className={`max-w-48 truncate rounded-md px-3 py-1.5 text-sm font-medium ${view === id ? "bg-accent text-white" : "text-muted hover:bg-sunk hover:text-ink"}`}
+                className={`max-w-48 truncate rounded-md px-3 py-1.5 text-sm font-medium ${view === id ? "bg-accent text-white" : "text-white/75 hover:bg-white/10 hover:text-white"}`}
               >
                 {label}
               </button>
             ))}
           </div>
         )}
-        <div className="ml-auto">
-          <StatusPill status={status} iface={iface} pps={traffic.length ? traffic[traffic.length - 1].pps : null} lastStatAt={lastStatAt} now={now} stale={stale} />
-        </div>
-      </header>
+        status={<StatusPill status={status} iface={iface} pps={traffic.length ? traffic[traffic.length - 1].pps : null} lastStatAt={lastStatAt} now={now} stale={stale} />}
+      />
+      <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
       {iface === "lo" && (
         <p className="text-sm text-muted">Demo mode: capturing loopback traffic only, so alerts come from programs on this computer.</p>
       )}
@@ -271,6 +273,7 @@ export default function App() {
           </div>
         </div>
       </main>
-    </div>
+      </div>
+    </>
   );
 }

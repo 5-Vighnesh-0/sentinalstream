@@ -1,5 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Fragment, memo, useCallback, useMemo, useRef, useState } from "react";
+import gsap from "gsap";
+import { Flip } from "gsap/Flip";
+import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FEED_LIMIT, IN_EFFECT_MS } from "../config";
 import type { RuleIn } from "../api";
 import { downloadCsv } from "../csv";
@@ -54,6 +56,8 @@ export function clockTime(iso: string | number, withDate = false) {
   return (withDate ? DATE_TIME : TIME).format(new Date(iso));
 }
 
+gsap.registerPlugin(Flip);
+
 const SEEN_AFTER_MS = 700; // a pointer passing over a row is not reading it
 
 type RowProps = {
@@ -77,6 +81,7 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
   const cell = "max-xl:p-0 xl:py-2 xl:pr-3";
   return (
     <tr
+      data-flip-id={alert.id}
       className={`border-t border-hairline max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-sunk" : ""}`}
       onMouseEnter={() => (dwell.current = setTimeout(seen, SEEN_AFTER_MS))}
       onMouseLeave={() => clearTimeout(dwell.current)}
@@ -124,7 +129,11 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
           // the in-effect window as a draining rail; the text says the same for anyone who can't see it
           <span className="mt-1 flex items-center gap-2 text-xs text-muted max-xl:justify-end">
             <span aria-hidden className="h-0.5 w-12 overflow-hidden rounded-full bg-hairline">
-              <span className={`block h-full ${frozen ? "bg-edge" : alert.severity === "high" ? "bg-sev-high" : alert.severity === "medium" ? "bg-sev-medium" : "bg-sev-low"}`} style={{ width: `${Math.min(100, ((secondsLeft * 1000) / IN_EFFECT_MS) * 100)}%` }} />
+              <span
+                // drains smoothly between the once-a-second updates; transform, not width, so it never reflows the row
+                className={`block h-full origin-left transition-transform duration-1000 ease-linear motion-reduce:transition-none ${frozen ? "bg-edge" : alert.severity === "high" ? "bg-sev-high" : alert.severity === "medium" ? "bg-sev-medium" : "bg-sev-low"}`}
+                style={{ transform: `scaleX(${Math.min(1, (secondsLeft * 1000) / IN_EFFECT_MS)})` }}
+              />
             </span>
             {frozen ? "held" : `${secondsLeft} s left`}
           </span>
@@ -182,6 +191,26 @@ export default function AlertFeed(props: Props) {
   const select = "mt-1 min-h-9 rounded border border-edge bg-surface px-2 text-sm text-ink";
 
   const toggle = useCallback((id: string) => setOpenId((cur) => (cur === id ? null : id)), []);
+
+  // Rows slide to their new place when activity reorders the feed, instead of jumping (GSAP Flip).
+  // Positions are read during render, while the DOM still shows the previous order; the effect animates from them.
+  const body = useRef<HTMLTableSectionElement>(null);
+  const order = shown.map((a) => a.id).join(",");
+  const lastOrder = useRef(order);
+  const flipState = useRef<Flip.FlipState | null>(null);
+  if (order !== lastOrder.current && body.current) flipState.current = Flip.getState(body.current.querySelectorAll("tr[data-flip-id]"));
+  useLayoutEffect(() => {
+    const state = flipState.current;
+    flipState.current = null;
+    lastOrder.current = order;
+    if (!state || !body.current || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    Flip.from(state, {
+      targets: body.current.querySelectorAll("tr[data-flip-id]"),
+      duration: 0.45,
+      ease: "expo.out",
+      onEnter: (rows) => gsap.fromTo(rows, { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }),
+    });
+  }, [order]);
 
   function close() {
     // the row's button stays mounted, so hand focus back before the details unmount
@@ -261,7 +290,7 @@ export default function AlertFeed(props: Props) {
               <th className="py-2 pr-3 font-medium">{captureTime ? "Capture time" : "Last activity"}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={body}>
             {shown.map((a, i) => (
               <Fragment key={a.id}>
                 {i === firstExpired && (
