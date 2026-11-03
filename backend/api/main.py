@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from backend.api import uploads
 from backend.api.auth import SUBPROTOCOL, TOKEN_FILE, from_bearer, from_subprotocols, load_or_create_token, matches
+from backend.api.suppressions import suppressed_by, validate
 from backend.api.uploads import analyse_upload, reset_upload_dir, sanitise_filename
 from backend.db.writer import ALERT_FIELDS, AlertAggregator, Writer, connect, now_iso
 from backend.features.extractor import check_capture_file
@@ -58,6 +59,31 @@ class Alert(BaseModel):
     last_seen: str
     batch_id: int | None
     flow_id: str | None
+    acknowledged_at: str | None = None
+    suppressed_by: int | None = None  # the mute rule that hides it; muted alerts are kept
+
+
+class AckBody(BaseModel):
+    acknowledged: bool
+
+
+class RuleIn(BaseModel):
+    src_ip: str | None = None
+    dst_ip: str | None = None
+    dst_port: int | None = None
+    attack_type: str | None = None
+
+
+class Rule(RuleIn):
+    id: int
+    created_at: str
+
+
+class Upload(BaseModel):
+    id: int
+    filename: str
+    uploaded_at: str
+    status: str
 
 
 class AlertPage(BaseModel):
@@ -134,12 +160,13 @@ class Hub:
         self.open_sockets: set[WebSocket] = set()  # every connection, for the cap
         self.dropped_messages = 0
         self.pipeline: Pipeline | None = None
+        self.rules: list[dict] = []  # mute rules sorted by id, loaded at startup and kept in step with the table
 
     def publish(self, row: dict, batch_id: int | None = None) -> None:
         with self.lock:
             alert, flow = self.aggregator.add(row, batch_id)
         self.writer.submit(alert, flow)
-        self.send_threadsafe({"type": "alert", "data": alert})
+        self.send_threadsafe({"type": "alert", "data": {**alert, "suppressed_by": suppressed_by(self.rules, alert)}})
 
     def send_threadsafe(self, message: dict) -> None:
         self.loop.call_soon_threadsafe(self.enqueue, message)
@@ -192,6 +219,9 @@ def create_app(capture: bool = True) -> FastAPI:
     model_path = resolve_model_path()
     iface = os.environ.get("SENTINEL_IFACE", "lo")
     hub = Hub(db_path)
+    with closing(connect(db_path)) as conn:  # create or migrate now: the read-only API connections must never see an old schema
+        conn.row_factory = sqlite3.Row
+        hub.rules = [dict(r) for r in conn.execute("SELECT * FROM suppressions ORDER BY id")]
     uploads_queue: queue.Queue = queue.Queue(maxsize=UPLOAD_BACKLOG)
     upload_lock = threading.Lock()
 
@@ -252,9 +282,10 @@ def create_app(capture: bool = True) -> FastAPI:
     app = FastAPI(title="SentinelStream", lifespan=lifespan)
     app.state.hub = hub
     app.state.token = token
+    app.state.db_path = db_path
     app.state.uploads = uploads_queue
-    app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"],
-                       allow_headers=["X-Sentinel-Upload", "Authorization"])
+    app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST", "PUT", "DELETE"],
+                       allow_headers=["X-Sentinel-Upload", "Authorization", "Content-Type"])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # blocks DNS rebinding
     app.add_middleware(UploadSizeLimit, limit=uploads.MAX_UPLOAD_BYTES)
 
@@ -279,7 +310,52 @@ def create_app(capture: bool = True) -> FastAPI:
             total = conn.execute(f"SELECT COUNT(*) FROM alerts {clause}", params).fetchone()[0]
             rows = conn.execute(f"SELECT {', '.join(ALERT_FIELDS)} FROM alerts {clause} "
                                 "ORDER BY timestamp DESC LIMIT ? OFFSET ?", [*params, limit, offset]).fetchall()
-        return AlertPage(items=[Alert(**dict(r)) for r in rows], total=total, limit=limit, offset=offset)
+        items = [Alert(**dict(r), suppressed_by=suppressed_by(hub.rules, dict(r))) for r in rows]
+        return AlertPage(items=items, total=total, limit=limit, offset=offset)
+
+    # Analyst writes are rare and need an immediate answer, so they use a short connection of their own;
+    # the writer thread stays the only writer of detections.
+    @app.put("/alerts/{alert_id}/ack", dependencies=[Depends(require_token)])
+    def acknowledge(alert_id: str, body: AckBody) -> Alert:
+        with closing(connect(db_path)) as conn, conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.execute("UPDATE alerts SET acknowledged_at = ? WHERE id = ?",
+                               (now_iso() if body.acknowledged else None, alert_id))
+            if cur.rowcount == 0:
+                raise HTTPException(404, "No such alert")
+            r = dict(conn.execute(f"SELECT {', '.join(ALERT_FIELDS)} FROM alerts WHERE id = ?", (alert_id,)).fetchone())
+        return Alert(**r, suppressed_by=suppressed_by(hub.rules, r))
+
+    @app.get("/suppressions", dependencies=[Depends(require_token)])
+    def list_rules() -> list[Rule]:
+        return [Rule(**r) for r in hub.rules]
+
+    @app.post("/suppressions", status_code=201, dependencies=[Depends(require_token)])
+    def create_rule(body: RuleIn) -> Rule:
+        try:
+            rule = validate(body.model_dump())
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        rule["created_at"] = now_iso()
+        with closing(connect(db_path)) as conn, conn:
+            rule["id"] = conn.execute("INSERT INTO suppressions (src_ip, dst_ip, dst_port, attack_type, created_at) "
+                                      "VALUES (:src_ip, :dst_ip, :dst_port, :attack_type, :created_at)", rule).lastrowid
+        hub.rules = sorted([*hub.rules, rule], key=lambda r: r["id"])
+        return Rule(**rule)
+
+    @app.delete("/suppressions/{rule_id}", status_code=204, dependencies=[Depends(require_token)])
+    def delete_rule(rule_id: int) -> None:
+        with closing(connect(db_path)) as conn, conn:
+            if conn.execute("DELETE FROM suppressions WHERE id = ?", (rule_id,)).rowcount == 0:
+                raise HTTPException(404, "No such rule")
+        hub.rules = [r for r in hub.rules if r["id"] != rule_id]
+
+    @app.get("/uploads", dependencies=[Depends(require_token)])
+    def list_uploads() -> list[Upload]:
+        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT id, filename, uploaded_at, status FROM upload_batches ORDER BY id DESC").fetchall()
+        return [Upload(**dict(r)) for r in rows]
 
     @app.post("/upload-pcap", status_code=202, dependencies=[Depends(require_token)])
     def upload_pcap(

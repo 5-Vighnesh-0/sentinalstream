@@ -215,3 +215,61 @@ def test_empty_token_file_is_replaced(tmp_path):
     (tmp_path / "api-token").write_text("")
     token = auth.load_or_create_token(tmp_path)
     assert token and (tmp_path / "api-token").read_text() == token
+
+
+def published_alert(client, **kw):
+    client.app.state.hub.publish(row(0, **kw))
+    return wait_for(lambda: client.get("/alerts").json()["items"])[0]
+
+
+def test_acknowledge_sets_and_clears(client):
+    alert = published_alert(client)
+    assert alert["acknowledged_at"] is None and alert["suppressed_by"] is None
+    acked = client.put(f"/alerts/{alert['id']}/ack", json={"acknowledged": True})
+    assert acked.status_code == 200 and acked.json()["acknowledged_at"]
+    assert client.put(f"/alerts/{alert['id']}/ack", json={"acknowledged": False}).json()["acknowledged_at"] is None
+    assert client.put("/alerts/nope/ack", json={"acknowledged": True}).status_code == 404
+
+
+def test_mute_rules_match_at_read_time_and_never_delete(client):
+    alert = published_alert(client)
+    created = client.post("/suppressions", json={"dst_ip": "10.0.0.1", "attack_type": "anomaly"})
+    assert created.status_code == 201
+    rule = created.json()
+    assert (rule["dst_ip"], rule["attack_type"], rule["src_ip"]) == ("10.0.0.1", "anomaly", None)
+    assert client.get("/suppressions").json() == [rule]
+    assert client.get("/alerts").json()["items"][0]["suppressed_by"] == rule["id"]
+    assert client.delete(f"/suppressions/{rule['id']}").status_code == 204
+    assert client.delete(f"/suppressions/{rule['id']}").status_code == 404
+    after = client.get("/alerts").json()["items"][0]
+    assert (after["id"], after["suppressed_by"]) == (alert["id"], None)  # still stored, unmuted
+
+
+def test_an_all_any_rule_is_refused(client):
+    assert client.post("/suppressions", json={}).status_code == 422
+    assert client.post("/suppressions", json={"dst_port": 70000}).status_code == 422
+
+
+def test_broadcast_alerts_carry_the_matching_rule(client):
+    rule = client.post("/suppressions", json={"attack_type": "anomaly"}).json()
+    with ws(client) as s:
+        threading.Thread(target=client.app.state.hub.publish, args=(row(5),)).start()
+        message = s.receive_json()
+        while message["type"] != "alert":
+            message = s.receive_json()
+    assert message["data"]["suppressed_by"] == rule["id"]
+
+
+def test_uploads_are_listed_newest_first(client):
+    with main.connect(client.app.state.db_path) as conn:
+        conn.executemany("INSERT INTO upload_batches (filename, uploaded_at, status) VALUES (?, ?, ?)",
+                         [("a.pcap", "2026-10-29T12:00:00.000Z", "done"), ("b.pcap", "2026-10-29T12:01:00.000Z", "failed")])
+    assert [(u["filename"], u["status"]) for u in client.get("/uploads").json()] == [("b.pcap", "failed"), ("a.pcap", "done")]
+
+
+def test_new_endpoints_need_the_token(client):
+    del client.headers["Authorization"]
+    for method, path in (("put", "/alerts/x/ack"), ("get", "/suppressions"), ("post", "/suppressions"),
+                         ("delete", "/suppressions/1"), ("get", "/uploads")):
+        kwargs = {"json": {"acknowledged": True}} if method in ("put", "post") else {}
+        assert getattr(client, method)(path, **kwargs).status_code == 401, path

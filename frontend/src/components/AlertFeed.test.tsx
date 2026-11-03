@@ -20,6 +20,12 @@ function Feed({ alerts, captureTime = false, changed = new Map() }: { alerts: Al
       onFilter={(s, a) => { setSeverity(s); setActiveOnly(a); }}
       changed={held}
       onSeen={(id) => setHeld((m) => { const n = new Map(m); n.delete(id); return n; })}
+      mutedCount={0}
+      showMuted={false}
+      onShowMuted={() => {}}
+      onAck={async () => {}}
+      onMute={async () => {}}
+      exportName="live"
     />
   );
 }
@@ -42,6 +48,8 @@ function makeAlerts(n: number): AlertItem[] {
     source: i % 2 ? "isolation_forest" : "rule",
     count: 1,
     batch_id: null,
+    acknowledged_at: null,
+    suppressed_by: null,
   }));
 }
 

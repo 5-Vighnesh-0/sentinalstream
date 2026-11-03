@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ackAlert, createRule, deleteRule, listRules, listUploads, mutedBy, type Rule, type RuleIn } from "./api";
 import AlertFeed, { clockTime, type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
 import InEffectStrip from "./components/InEffectStrip";
-import { inEffect } from "./components/Level";
+import MutedPatterns from "./components/MutedPatterns";
 import PCAPUpload, { type Batch } from "./components/PCAPUpload";
 import StatusPill from "./components/StatusPill";
 import TokenForm from "./components/TokenForm";
@@ -39,6 +40,8 @@ export default function App() {
   const [view, setView] = useState<number | null>(null); // null = live traffic, else an upload batch id
   const [severity, setSeverity] = useState("all");
   const [activeOnly, setActiveOnly] = useState(false); // the strip filters to what it counts: in effect only
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [showMuted, setShowMuted] = useState(false);
   const [changed, setChanged] = useState<Map<string, "new" | "updated">>(new Map());
   const [announcement, setAnnouncement] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -72,7 +75,13 @@ export default function App() {
 
   // A rejected WebSocket handshake never fires onopen, so check the token over REST on its own too.
   useEffect(() => {
-    if (token && !rejected) loadAlerts(null);
+    if (!token || rejected) return;
+    loadAlerts(null);
+    listRules(token).then(setRules).catch(() => {});
+    // Past uploads come back as tabs after a reload; statuses already heard over the WebSocket are newer, so they win.
+    listUploads(token)
+      .then((uploads) => setBatches((prev) => ({ ...Object.fromEntries(uploads.map((u) => [u.id, { name: u.filename, status: u.status }])), ...prev })))
+      .catch(() => {});
   }, [token, rejected, loadAlerts]);
 
   const onMessage = useCallback((message: { type: string; data: any }) => {
@@ -108,14 +117,40 @@ export default function App() {
   const frozen = stale || (status === "reconnecting" && lastStatAt !== null);
   const clock = frozen ? lastStatAt! : now;
   // Stable lists between ticks, so memoised children only re-render when alerts change, not every second.
-  const live = useMemo(() => alerts.filter((a) => a.batch_id === null), [alerts]);
-  const visible = useMemo(() => (view === null ? live : alerts.filter((a) => a.batch_id === view)), [alerts, live, view]);
-  const highInEffect = live.filter((a) => a.severity === "high" && inEffect(a, clock)).length;
+  // Mute rules are matched here too, so alerts already loaded update the moment a rule changes.
+  const marked = useMemo(
+    () => alerts.map((a) => {
+      const rule = mutedBy(rules, a);
+      return rule === a.suppressed_by ? a : { ...a, suppressed_by: rule };
+    }),
+    [alerts, rules],
+  );
+  const live = useMemo(() => marked.filter((a) => a.batch_id === null), [marked]);
+  const inView = useMemo(() => (view === null ? live : marked.filter((a) => a.batch_id === view)), [marked, live, view]);
+  const unmuted = useMemo(() => inView.filter((a) => a.suppressed_by === null), [inView]);
+  const visible = showMuted ? inView : unmuted;
+  // A High stays in the title until someone acknowledges it, in effect or not.
+  const highUnacked = live.filter((a) => a.severity === "high" && a.suppressed_by === null && a.acknowledged_at === null).length;
   const locked = !token || rejected;
 
   useEffect(() => {
-    document.title = highInEffect ? `(${highInEffect} High) SentinelStream` : "SentinelStream";
-  }, [highInEffect]);
+    document.title = highUnacked ? `(${highUnacked} High) SentinelStream` : "SentinelStream";
+  }, [highUnacked]);
+
+  const onAck = useCallback(async (id: string, acknowledged: boolean) => {
+    const updated = await ackAlert(token, id, acknowledged);
+    setAlerts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+  }, [token]);
+
+  const onMute = useCallback(async (rule: RuleIn) => {
+    const created = await createRule(token, rule);
+    setRules((prev) => [...prev, created].sort((a, b) => a.id - b.id));
+  }, [token]);
+
+  const onDeleteRule = useCallback(async (id: number) => {
+    await deleteRule(token, id);
+    setRules((prev) => prev.filter((r) => r.id !== id));
+  }, [token]);
 
   function saveNewToken(t: string) {
     saveToken(t);
@@ -126,6 +161,7 @@ export default function App() {
   function viewBatch(batchId: number | null) {
     setView(batchId);
     filter("all", false);
+    setShowMuted(false);
     if (batchId !== null) loadAlerts(batchId);
   }
 
@@ -211,6 +247,12 @@ export default function App() {
                 onFilter={filter}
                 changed={changed}
                 onSeen={seen}
+                mutedCount={inView.length - unmuted.length}
+                showMuted={showMuted}
+                onShowMuted={setShowMuted}
+                onAck={onAck}
+                onMute={onMute}
+                exportName={view === null ? "live" : `upload-${view}`}
               />
             )}
           </div>
@@ -225,6 +267,7 @@ export default function App() {
                 onRejected={() => setRejected(true)}
               />
             )}
+            {!locked && <MutedPatterns rules={rules} onDelete={onDeleteRule} />}
           </div>
         </div>
       </main>

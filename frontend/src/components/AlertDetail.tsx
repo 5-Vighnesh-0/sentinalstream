@@ -1,14 +1,24 @@
-import { X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { BellOff, Check, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type { RuleIn } from "../api";
 import { DETECTOR, clockTime, endpoint, evidence, type AlertItem } from "./AlertFeed";
 import { LevelChip, inEffect, typeLabel } from "./Level";
+import MuteEditor from "./MuteEditor";
 
-type Props = { alert: AlertItem; clock: number; onClose: () => void };
+type Props = {
+  alert: AlertItem;
+  clock: number;
+  onClose: () => void;
+  onAck: (id: string, acknowledged: boolean) => Promise<void>;
+  onMute: (rule: RuleIn) => Promise<void>;
+};
 
 /** One alert's facts in labelled segments, opened in place under its row; the evidence segment spells out its number.
  *  Focus moves to the heading on open; Escape or the close button returns it to the row. */
-export default function AlertDetail({ alert, clock, onClose }: Props) {
+export default function AlertDetail({ alert, clock, onClose, onAck, onMute }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
+  const [muting, setMuting] = useState(false);
+  const [result, setResult] = useState("");
   useEffect(() => heading.current?.focus(), [alert.id]);
   const capture = alert.batch_id !== null;
   const segments: [string, React.ReactNode, string?][] = [ // third item: column span, so no row ends in an empty cell
@@ -22,6 +32,16 @@ export default function AlertDetail({ alert, clock, onClose }: Props) {
     ["Last seen", <span className="font-mono">{clockTime(alert.last_seen, capture)}</span>, "sm:col-span-2"],
     ["Evidence", evidence(alert)[1], "col-span-2 sm:col-span-3"],
   ];
+  const acked = alert.acknowledged_at !== null;
+
+  async function ack() {
+    try {
+      await onAck(alert.id, !acked);
+      setResult(acked ? "Acknowledgement removed" : "Acknowledged");
+    } catch {
+      setResult("The backend refused the change. Try again.");
+    }
+  }
   return (
     <section
       aria-labelledby={`detail-${alert.id}`}
@@ -44,6 +64,30 @@ export default function AlertDetail({ alert, clock, onClose }: Props) {
           </div>
         ))}
       </dl>
+      <div className="space-y-3 border-t border-hairline px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={ack} className="inline-flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent/90">
+            <Check aria-hidden size={15} /> {acked ? "Undo acknowledge" : "Acknowledge"}
+          </button>
+          <button type="button" aria-expanded={muting} onClick={() => setMuting(!muting)} className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium text-accent ring-1 ring-edge hover:bg-accent-tint">
+            <BellOff aria-hidden size={15} /> Mute alerts like this
+          </button>
+          {acked && <span className="text-sm text-muted">Acknowledged <span className="font-mono">{clockTime(alert.acknowledged_at!)}</span></span>}
+          {alert.suppressed_by !== null && <span className="text-sm text-muted">Muted by rule {alert.suppressed_by}</span>}
+        </div>
+        {muting && (
+          <MuteEditor
+            alert={alert}
+            onCancel={() => setMuting(false)}
+            onSave={async (rule) => {
+              await onMute(rule);
+              setMuting(false);
+              setResult("Muted: matching alerts are hidden and counted in the feed");
+            }}
+          />
+        )}
+        <p aria-live="polite" className="sr-only">{result}</p>
+      </div>
     </section>
   );
 }
