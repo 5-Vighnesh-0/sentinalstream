@@ -19,6 +19,7 @@ export default function AlertDetail({ alert, clock, onClose, onAck, onMute }: Pr
   const heading = useRef<HTMLHeadingElement>(null);
   const [muting, setMuting] = useState(false);
   const [result, setResult] = useState("");
+  const [failed, setFailed] = useState(false);
   useEffect(() => heading.current?.focus(), [alert.id]);
   const capture = alert.batch_id !== null;
   const segments: [string, React.ReactNode, string?][] = [ // third item: column span, so no row ends in an empty cell
@@ -37,9 +38,11 @@ export default function AlertDetail({ alert, clock, onClose, onAck, onMute }: Pr
   async function ack() {
     try {
       await onAck(alert.id, !acked);
+      setFailed(false);
       setResult(acked ? "Acknowledgement removed" : "Acknowledged");
     } catch {
-      setResult("The backend refused the change. Try again.");
+      setFailed(true);
+      setResult("The backend did not save the acknowledgement. Check the connection and press it again.");
     }
   }
   return (
@@ -66,7 +69,7 @@ export default function AlertDetail({ alert, clock, onClose, onAck, onMute }: Pr
       </dl>
       <div className="space-y-3 border-t border-hairline px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={ack} className="inline-flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent/90">
+          <button type="button" onClick={ack} className="inline-flex items-center gap-1.5 ink-btn rounded px-3 py-1.5 text-sm font-semibold text-white">
             <Check aria-hidden size={15} /> {acked ? "Undo acknowledge" : "Acknowledge"}
           </button>
           <button type="button" aria-expanded={muting} onClick={() => setMuting(!muting)} className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium text-accent ring-1 ring-edge hover:bg-accent-tint">
@@ -86,7 +89,8 @@ export default function AlertDetail({ alert, clock, onClose, onAck, onMute }: Pr
             }}
           />
         )}
-        <p aria-live="polite" className="sr-only">{result}</p>
+        {/* a failure must be seen as well as heard; success is already visible in the row and the button */}
+        <p aria-live="polite" className={failed ? "text-sm font-medium text-sev-high-ink" : "sr-only"}>{result}</p>
       </div>
     </section>
   );

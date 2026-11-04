@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { expect, test } from "vitest";
+import { act } from "react";
+import { expect, test, vi } from "vitest";
 import AlertFeed, { type AlertItem, endpoint, evidence } from "./AlertFeed";
 
 const NOW = Date.parse("2026-10-29T12:00:10.000Z");
@@ -114,7 +115,15 @@ test("a changed row stays marked until it is looked at", () => {
   render(<Feed alerts={[a]} changed={new Map([[a.id, "updated" as const]])} />);
   const row = bodyRows()[0];
   expect(within(row).getByText("Updated")).toBeTruthy();
-  fireEvent.focus(within(row).getByRole("button"));
+  vi.useFakeTimers();
+  const button = within(row).getByRole("button");
+  fireEvent.focus(button); // tabbing past is not looking
+  fireEvent.blur(button);
+  act(() => vi.advanceTimersByTime(1000));
+  expect(within(row).getByText("Updated")).toBeTruthy();
+  fireEvent.focus(button); // resting on it is
+  act(() => vi.advanceTimersByTime(1000));
+  vi.useRealTimers();
   expect(within(row).queryByText("Updated")).toBeNull();
 });
 

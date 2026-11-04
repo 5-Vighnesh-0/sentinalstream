@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { useState } from "react";
 import type { Rule } from "../api";
 import { endpoint } from "./AlertFeed";
 import { typeLabel } from "./Level";
@@ -14,18 +15,19 @@ type Props = { rules: Rule[]; onDelete: (id: number) => Promise<void> };
 
 /** The mute rules in force; deleting one unmutes its alerts at once (they were never deleted). */
 export default function MutedPatterns({ rules, onDelete }: Props) {
+  const [error, setError] = useState("");
   if (rules.length === 0) return null;
   return (
-    <section className="rounded-lg border border-hairline bg-surface p-4" aria-labelledby="muted-heading">
+    <section className="ink-panel bg-surface p-4" aria-labelledby="muted-heading">
       <h2 id="muted-heading" className="text-lg font-semibold">Muted patterns</h2>
       <p className="mt-1 text-sm text-muted">Matching alerts are stored and counted, but hidden from the feed.</p>
-      <ul className="mt-3 divide-y divide-hairline border-t border-hairline">
+      <ul className="mt-3 divide-y divide-row border-t border-row">
         {rules.map((rule) => (
           <li key={rule.id} className="flex items-center justify-between gap-3 py-2 text-sm">
             <span className="min-w-0 break-words">{describe(rule)}</span>
             <button
               type="button"
-              onClick={() => onDelete(rule.id)}
+              onClick={() => onDelete(rule.id).then(() => setError(""), () => setError("The backend did not delete the rule, so it still mutes. Try again."))}
               aria-label={`Delete rule: ${describe(rule)}`}
               className="inline-flex size-8 shrink-0 items-center justify-center rounded text-muted hover:bg-sunk hover:text-ink"
             >
@@ -34,6 +36,7 @@ export default function MutedPatterns({ rules, onDelete }: Props) {
           </li>
         ))}
       </ul>
+      {error && <p role="alert" className="mt-2 text-sm font-medium text-sev-high-ink">{error}</p>}
     </section>
   );
 }

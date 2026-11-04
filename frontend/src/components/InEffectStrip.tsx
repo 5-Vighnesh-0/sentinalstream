@@ -1,3 +1,5 @@
+import gsap from "gsap";
+import { useLayoutEffect, useRef } from "react";
 import type { AlertItem } from "./AlertFeed";
 import { LEVEL, LEVELS, inEffect } from "./Level";
 
@@ -9,55 +11,98 @@ type Props = {
   severity: string;
   activeOnly: boolean;
   onFilter: (severity: string, activeOnly: boolean) => void;
+  note?: string | null; // a fact about the capture (demo mode), set as the band's caption
 };
 
-/** One block per level, like the header of a warning bulletin: the count is the headline. Only an in-effect High is
- *  filled; an empty level is grey. Pressing a block shows exactly what it counts; pressing it again clears the filter. */
-export default function InEffectStrip({ alerts, clock, frozen, capture, severity, activeOnly, onFilter }: Props) {
+/** The ink band: a full-bleed charcoal wash where the in-effect counts are the headline, set huge like a bulletin.
+ *  While a High is in effect the vermilion seal floods across it (the page's one authored motion: a wipe from the left,
+ *  a cross-fade with reduced motion). Pressing a level filters the feed to exactly what it counts. */
+export default function InEffectStrip({ alerts, clock, frozen, capture, severity, activeOnly, onFilter, note }: Props) {
   const counted = capture ? alerts : alerts.filter((a) => inEffect(a, clock));
   const expired = alerts.length - counted.length;
   const asOf = new Date(clock).toLocaleTimeString();
+  const highs = counted.filter((a) => a.severity === "high").length;
+  // Still raised while frozen: a dropped connection must never look like an all-clear. The flood just holds still.
+  const raised = !capture && highs > 0;
+  const flood = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = flood.current;
+    if (!el) return;
+    const mm = gsap.matchMedia();
+    mm.add({ full: "(prefers-reduced-motion: no-preference)", reduced: "(prefers-reduced-motion: reduce)" }, (ctx) => {
+      if (ctx.conditions?.full) {
+        if (raised) {
+          // always from the left edge, like ink spreading across the band
+          gsap.fromTo(el, { clipPath: "inset(0% 100% 0% 0%)", opacity: 1 }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.7, ease: "expo.out" });
+        } else {
+          gsap.to(el, { clipPath: "inset(0% 0% 0% 100%)", duration: 0.35, ease: "power2.in" }); // exits faster than it arrives
+        }
+      } else {
+        gsap.to(el, { clipPath: "inset(0% 0% 0% 0%)", opacity: raised ? 1 : 0, duration: 0.2 });
+      }
+    });
+    return () => mm.revert();
+  }, [raised]);
+
+  const quiet = raised ? "text-white" : "text-band-muted"; // grey on vermilion would fall below 4.5:1
   return (
-    <section aria-labelledby="in-effect-heading" className="space-y-2">
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 id="in-effect-heading" className="text-lg font-semibold">
-          {capture ? "In this capture" : frozen ? `In effect as of ${asOf}` : "In effect now"}
-        </h2>
-        {!capture && (
-          <p className={`text-sm ${frozen ? "font-medium text-stale" : "text-muted"}`}>
-            {frozen
-              ? "No new data: counts are held until the connection is back"
-              : expired === 0
-                ? "Nothing has expired yet"
-                : `${expired.toLocaleString("en-US")} earlier ${expired === 1 ? "alert has" : "alerts have"} expired`}
-          </p>
-        )}
+    <section aria-labelledby="in-effect-heading" className="relative overflow-hidden bg-band text-band-text">
+      <div ref={flood} aria-hidden className="absolute inset-0 bg-sev-high" style={{ clipPath: "inset(0% 100% 0% 0%)" }} />
+      <svg aria-hidden className="pointer-events-none absolute inset-0 h-full w-full">
+        <rect width="100%" height="100%" filter="url(#ink-grain)" />
+      </svg>
+      <div className="relative mx-auto max-w-[1440px] px-4 pt-6 pb-9 sm:px-6">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 id="in-effect-heading" className="font-display text-sm font-bold tracking-[0.18em] uppercase">
+            {capture ? "In this capture" : frozen ? `In effect as of ${asOf}` : raised ? "High in effect" : "In effect now"}
+          </h2>
+          {!capture && (
+            <p className={`text-sm ${quiet}`}>
+              {frozen
+                ? "No new data: counts are held until the connection is back"
+                : expired === 0
+                  ? "Nothing has expired yet"
+                  : `${expired.toLocaleString("en-US")} earlier ${expired === 1 ? "alert has" : "alerts have"} expired`}
+            </p>
+          )}
+        </div>
+        <div className="mt-4 grid grid-cols-3 divide-x divide-white/15">
+          {LEVELS.map((level) => {
+            const n = counted.filter((a) => a.severity === level).length;
+            const { label, Icon } = LEVEL[level];
+            const pressed = severity === level && activeOnly === !capture;
+            const empty = n === 0; // a held count is still a count: only a true zero is dimmed
+            return (
+              <button
+                key={level}
+                type="button"
+                aria-pressed={pressed}
+                aria-label={`${label} ${n} ${capture ? "alerts" : "in effect"}`}
+                onClick={() => onFilter(pressed ? "all" : level, !capture && !pressed)}
+                className={`group flex flex-col gap-2 px-4 py-2 text-left first:pl-0 hover:bg-white/5 ${pressed ? "underline decoration-2 underline-offset-8" : ""}`}
+              >
+                <span className={`flex items-center gap-1.5 text-xs font-semibold tracking-[0.16em] uppercase ${empty ? quiet : ""}`}>
+                  <Icon aria-hidden size={14} strokeWidth={2.25} />
+                  {label}
+                </span>
+                <span
+                  key={n}
+                  // Big while a High is up; calm otherwise, so a lone Low never becomes the loudest thing on a quiet page.
+                  className={`count-tick font-display leading-none font-extrabold ${raised ? "text-5xl sm:text-7xl" : "text-4xl sm:text-5xl"} ${empty ? `${quiet} opacity-70` : level === "high" || raised ? "text-white" : "text-band-text"}`}
+                >
+                  {n}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {note && <p className={`mt-5 text-sm ${quiet}`}>{note}</p>}
       </div>
-      <div className="grid grid-cols-3 gap-2 sm:flex">
-        {LEVELS.map((level) => {
-          const n = counted.filter((a) => a.severity === level).length;
-          const { label, Icon, solid, tint, icon } = LEVEL[level];
-          const pressed = severity === level && activeOnly === !capture;
-          const look =
-            n === 0 || frozen ? "bg-surface text-muted ring-1 ring-hairline" : level === "high" && !capture ? solid : tint;
-          return (
-            <button
-              key={level}
-              type="button"
-              aria-pressed={pressed}
-              aria-label={`${label} ${n} ${capture ? "alerts" : "in effect"}`}
-              onClick={() => onFilter(pressed ? "all" : level, !capture && !pressed)}
-              className={`flex min-h-16 flex-col justify-between rounded-md px-3 py-2 text-left sm:w-44 ${look} ${pressed ? "ring-2 ring-accent ring-offset-2 ring-offset-page" : ""}`}
-            >
-              <span className="flex items-center gap-1.5 text-sm font-semibold">
-                <Icon aria-hidden size={15} strokeWidth={2.25} className={n === 0 || frozen ? icon : undefined} />
-                {label}
-              </span>
-              <span className="font-mono text-2xl leading-none font-semibold">{n}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* torn brush edge where the band meets the paper */}
+      <svg aria-hidden viewBox="0 0 1200 14" preserveAspectRatio="none" className="absolute bottom-0 left-0 h-3.5 w-full fill-page">
+        <path d="M0 14V9c40-3 70 2 120-1s90-5 140-2 60 4 110 1 80-6 130-3 70 5 120 2 90-4 140-1 70 3 120 0 80-5 130-2 60 3 90 1 50-2 100 1V14z" />
+      </svg>
     </section>
   );
 }

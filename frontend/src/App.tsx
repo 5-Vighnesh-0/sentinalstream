@@ -4,6 +4,8 @@ import AlertFeed, { clockTime, type AlertItem } from "./components/AlertFeed";
 import AttackDistribution from "./components/AttackDistribution";
 import Banners from "./components/Banners";
 import InEffectStrip from "./components/InEffectStrip";
+import InkDefs from "./components/InkDefs";
+import Masthead from "./components/Masthead";
 import MutedPatterns from "./components/MutedPatterns";
 import PCAPUpload, { type Batch } from "./components/PCAPUpload";
 import StatusPill from "./components/StatusPill";
@@ -195,10 +197,10 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-hairline pb-3">
-        <h1 className="text-[22px] font-bold tracking-tight">SentinelStream</h1>
-        {!locked && tabs.length > 1 && (
+    <>
+      <InkDefs />
+      <Masthead
+        nav={!locked && tabs.length > 1 && (
           <div role="tablist" aria-label="View" className="flex max-w-full gap-1 overflow-x-auto">
             {tabs.map(([id, label], i) => (
               <button
@@ -217,19 +219,24 @@ export default function App() {
             ))}
           </div>
         )}
-        <div className="ml-auto">
-          <StatusPill status={status} iface={iface} pps={traffic.length ? traffic[traffic.length - 1].pps : null} lastStatAt={lastStatAt} now={now} stale={stale} />
-        </div>
-      </header>
-      {iface === "lo" && (
-        <p className="text-sm text-muted">Demo mode: capturing loopback traffic only, so alerts come from programs on this computer.</p>
+        status={<StatusPill status={status} iface={iface} lastStatAt={lastStatAt} now={now} stale={stale} />}
+      />
+      <main>
+      {!locked && (
+        <InEffectStrip
+          alerts={visible}
+          clock={clock}
+          frozen={frozen}
+          capture={view !== null}
+          severity={severity}
+          activeOnly={activeOnly}
+          onFilter={filter}
+          note={iface === "lo" ? "Demo mode: capturing loopback traffic only, so alerts come from programs on this computer." : null}
+        />
       )}
+      <div className="mx-auto max-w-[1440px] space-y-4 p-4 sm:px-6">
       <Banners status={status} modelLoaded={modelLoaded} />
       <p aria-live="polite" className="sr-only">{announcement}</p>
-      <main className="space-y-4">
-        {!locked && (
-          <InEffectStrip alerts={visible} clock={clock} frozen={frozen} capture={view !== null} severity={severity} activeOnly={activeOnly} onFilter={filter} />
-        )}
         {/* grid-cols-1 = minmax(0, 1fr): without it the column grows to the table's width on phones */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="space-y-4">
@@ -270,7 +277,8 @@ export default function App() {
             {!locked && <MutedPatterns rules={rules} onDelete={onDeleteRule} />}
           </div>
         </div>
+      </div>
       </main>
-    </div>
+    </>
   );
 }

@@ -1,5 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Fragment, memo, useCallback, useMemo, useRef, useState } from "react";
+import gsap from "gsap";
+import { Flip } from "gsap/Flip";
+import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FEED_LIMIT, IN_EFFECT_MS } from "../config";
 import type { RuleIn } from "../api";
 import { downloadCsv } from "../csv";
@@ -54,6 +56,8 @@ export function clockTime(iso: string | number, withDate = false) {
   return (withDate ? DATE_TIME : TIME).format(new Date(iso));
 }
 
+gsap.registerPlugin(Flip);
+
 const SEEN_AFTER_MS = 700; // a pointer passing over a row is not reading it
 
 type RowProps = {
@@ -77,10 +81,13 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
   const cell = "max-xl:p-0 xl:py-2 xl:pr-3";
   return (
     <tr
-      className={`border-t border-hairline max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-sunk" : ""}`}
+      data-flip-id={alert.id}
+      className={`border-t border-row max-xl:grid max-xl:grid-cols-[auto_minmax(0,1fr)_auto] max-xl:items-center max-xl:gap-x-3 max-xl:gap-y-1 max-xl:px-3 max-xl:py-2.5 ${changed ? "bg-changed" : open ? "bg-page" : ""}`}
       onMouseEnter={() => (dwell.current = setTimeout(seen, SEEN_AFTER_MS))}
       onMouseLeave={() => clearTimeout(dwell.current)}
-      onFocus={seen}
+      // focus gets the same dwell as hover: tabbing past rows must not erase their New/Updated marks
+      onFocus={() => (dwell.current = setTimeout(seen, SEEN_AFTER_MS))}
+      onBlur={() => clearTimeout(dwell.current)}
     >
       <td className={`${cell} xl:pl-3`}>
         <LevelChip level={alert.severity} state={captureTime ? "history" : active ? "active" : "expired"} />
@@ -95,7 +102,7 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
           }}
           aria-expanded={open}
           aria-label={`${LEVEL[alert.severity].label} ${typeLabel(alert.attack_type)} from ${endpoint(alert.src_ip, alert.src_port)} at ${clockTime(alert.last_seen, captureTime)}: details`}
-          className={`-my-1 inline-flex min-h-7 items-center gap-1 rounded py-1 underline decoration-hairline underline-offset-4 hover:decoration-ink ${(active || captureTime) && !alert.acknowledged_at ? "font-semibold text-ink" : "text-muted"}`}
+          className={`-my-1 inline-flex min-h-7 items-center gap-1 rounded py-1 hover:underline hover:underline-offset-4 ${(active || captureTime) && !alert.acknowledged_at ? "font-semibold text-ink" : "text-muted"}`}
         >
           {typeLabel(alert.attack_type)}
           <Chevron aria-hidden size={14} className="text-muted" />
@@ -105,16 +112,16 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
         {/* each endpoint stays whole; a narrow row wraps only at the arrow */}
         <span className="whitespace-nowrap">{endpoint(alert.src_ip, alert.src_port)} <span aria-hidden>→</span></span>
         <span className="sr-only">to</span> <span className="whitespace-nowrap">{endpoint(alert.dst_ip, alert.dst_port)}</span>
-        {alert.count > 1 && <span className="ml-2 text-muted xl:hidden">×{alert.count}</span>}
+        <span className="ml-2 text-muted xl:hidden">×{alert.count}</span>
       </td>
-      <td className={`${cell} text-right font-mono text-[13px] max-xl:hidden`}>{alert.count > 1 ? `×${alert.count}` : ""}</td>
-      <td className={`${cell} whitespace-nowrap max-xl:order-5 max-xl:text-right max-xl:text-xs xl:text-right ${active || captureTime ? "" : "text-muted"}`} title={why}>
+      <td className={`${cell} text-right font-mono text-[13px] max-xl:hidden ${alert.count > 1 ? "" : "text-muted"}`}>×{alert.count}</td>
+      <td className={`${cell} whitespace-nowrap max-xl:order-5 max-xl:text-right max-xl:text-xs xl:text-right text-muted`} title={why}>
         {text}
       </td>
       <td className={`${cell} whitespace-nowrap max-xl:order-3 max-xl:text-right ${active || captureTime ? "" : "text-muted"}`}>
-        <span className="font-mono text-[13px]">{clockTime(alert.last_seen, captureTime)}</span>
+        <span className="font-mono text-[13px] text-muted">{clockTime(alert.last_seen, captureTime)}</span>
         {changed && (
-          <span className="ml-2 rounded bg-surface px-1.5 py-0.5 text-xs font-semibold text-ink ring-1 ring-hairline">
+          <span className="ml-2 text-xs font-semibold text-ink">
             {changed === "new" ? "New" : "Updated"}
           </span>
         )}
@@ -124,7 +131,11 @@ const AlertRow = memo(function AlertRow({ alert, active, secondsLeft, frozen, ca
           // the in-effect window as a draining rail; the text says the same for anyone who can't see it
           <span className="mt-1 flex items-center gap-2 text-xs text-muted max-xl:justify-end">
             <span aria-hidden className="h-0.5 w-12 overflow-hidden rounded-full bg-hairline">
-              <span className={`block h-full ${frozen ? "bg-edge" : alert.severity === "high" ? "bg-sev-high" : alert.severity === "medium" ? "bg-sev-medium" : "bg-sev-low"}`} style={{ width: `${Math.min(100, ((secondsLeft * 1000) / IN_EFFECT_MS) * 100)}%` }} />
+              <span
+                // drains smoothly between the once-a-second updates; transform, not width, so it never reflows the row
+                className={`block h-full origin-left transition-transform duration-1000 ease-linear motion-reduce:transition-none ${frozen ? "bg-edge" : alert.severity === "high" ? "bg-sev-high" : alert.severity === "medium" ? "bg-sev-medium" : "bg-sev-low"}`}
+                style={{ transform: `scaleX(${Math.min(1, (secondsLeft * 1000) / IN_EFFECT_MS)})` }}
+              />
             </span>
             {frozen ? "held" : `${secondsLeft} s left`}
           </span>
@@ -183,6 +194,26 @@ export default function AlertFeed(props: Props) {
 
   const toggle = useCallback((id: string) => setOpenId((cur) => (cur === id ? null : id)), []);
 
+  // Rows slide to their new place when activity reorders the feed, instead of jumping (GSAP Flip).
+  // Positions are read during render, while the DOM still shows the previous order; the effect animates from them.
+  const body = useRef<HTMLTableSectionElement>(null);
+  const order = shown.map((a) => a.id).join(",");
+  const lastOrder = useRef(order);
+  const flipState = useRef<Flip.FlipState | null>(null);
+  if (order !== lastOrder.current && body.current) flipState.current = Flip.getState(body.current.querySelectorAll("tr[data-flip-id]"));
+  useLayoutEffect(() => {
+    const state = flipState.current;
+    flipState.current = null;
+    lastOrder.current = order;
+    if (!state || !body.current || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    Flip.from(state, {
+      targets: body.current.querySelectorAll("tr[data-flip-id]"),
+      duration: 0.45,
+      ease: "expo.out",
+      onEnter: (rows) => gsap.fromTo(rows, { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }),
+    });
+  }, [order]);
+
   function close() {
     // the row's button stays mounted, so hand focus back before the details unmount
     document.querySelector<HTMLElement>(`[data-alert="${openId}"]`)?.focus();
@@ -190,7 +221,7 @@ export default function AlertFeed(props: Props) {
   }
 
   return (
-    <section className="rounded-lg border border-hairline bg-surface" aria-labelledby="alerts-heading">
+    <section className="ink-panel ink-panel-brush bg-surface" aria-labelledby="alerts-heading">
       <div className="flex flex-wrap items-end gap-3 px-4 pt-4 pb-3">
         <div className="mr-auto">
           <h2 id="alerts-heading" className="text-lg font-semibold">Alerts</h2>
@@ -251,7 +282,7 @@ export default function AlertFeed(props: Props) {
       <div className="feed-scroll overflow-x-auto">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">Alerts, latest activity first. Each attack name opens the alert's details.</caption>
-          <thead className="bg-sunk text-xs text-muted max-xl:sr-only">
+          <thead className="border-b border-hairline text-xs text-muted max-xl:sr-only">
             <tr>
               <th className="py-2 pr-3 pl-3 font-medium">Level</th>
               <th className="py-2 pr-3 font-medium">Attack</th>
@@ -261,12 +292,12 @@ export default function AlertFeed(props: Props) {
               <th className="py-2 pr-3 font-medium">{captureTime ? "Capture time" : "Last activity"}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={body}>
             {shown.map((a, i) => (
               <Fragment key={a.id}>
                 {i === firstExpired && (
                   <tr className="max-xl:block">
-                    <td colSpan={6} className="border-t border-hairline bg-page px-3 py-1.5 text-xs font-medium text-muted max-xl:block">
+                    <td colSpan={6} className="border-t border-row bg-page px-3 py-1.5 text-xs font-medium text-muted max-xl:block">
                       Expired: no activity for 30 s
                     </td>
                   </tr>
@@ -284,7 +315,7 @@ export default function AlertFeed(props: Props) {
                 />
                 {a.id === openId && (
                   <tr className="max-xl:block">
-                    <td colSpan={6} className="border-t border-hairline bg-sunk p-3 max-xl:block">
+                    <td colSpan={6} className="border-t border-row bg-sunk p-3 max-xl:block">
                       <AlertDetail alert={a} clock={clock} onClose={close} onAck={props.onAck} onMute={props.onMute} />
                     </td>
                   </tr>
