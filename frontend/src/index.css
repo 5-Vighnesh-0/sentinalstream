@@ -1,37 +1,51 @@
 @import "@fontsource-variable/public-sans/wght.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "@fontsource-variable/montserrat/wght.css";
 @import "tailwindcss";
 
-/* Light only (AGENTS.md). Every text pairing below is ≥ 4.5:1; severity fills are also ≥ 3:1 as graphics. */
+/* Ink on paper, light only (AGENTS.md). Black and white, with one vermilion "seal" kept for High alone,
+ * as an ink painting keeps its only colour for the stamp. Every text pairing is >= 4.5:1. */
 @theme {
-  --color-page: #f3f5f8;
+  --color-page: #f7f7f5;
   --color-surface: #ffffff;
-  --color-sunk: #e9edf2;
-  --color-ink: #141b24;
-  --color-muted: #4a5666;
-  --color-hairline: #d3dae3;
-  --color-edge: #7b8796; /* input and drop-zone borders: 3.6:1 on white */
-  --color-accent: #2447c2; /* only on things you can press, and focus */
-  --color-accent-tint: #e8edfb;
+  --color-sunk: #eeeeec;
+  --color-ink: #141414;
+  --color-muted: #575757;
+  --color-hairline: #d6d6d4;
+  --color-row: #ececea; /* table row rules: 3-7% darker than white, so rows read as rows, not a grid */
+  --color-edge: #8c8c8c; /* input and drop-zone borders: 3.3:1 on white */
+  --color-accent: #141414; /* pressables are inked */
+  --color-accent-tint: #ececea;
+  --color-band: #1a1a1a; /* the ink-wash band */
+  --color-band-text: #e8e8e6;
+  --color-band-muted: #a3a3a0;
 
-  --color-sev-high: #b42318;
-  --color-sev-high-tint: #fdecea;
-  --color-sev-high-ink: #8a1a11;
-  --color-sev-medium: #b54708;
-  --color-sev-medium-tint: #fef0db;
-  --color-sev-medium-ink: #7a3406;
-  --color-sev-low: #0e7490;
-  --color-sev-low-tint: #e3f3f7;
-  --color-sev-low-ink: #0b4f63;
+  --color-sev-high: #c0311a; /* vermilion seal: the only colour on the page */
+  --color-sev-high-tint: #fbe9e6;
+  --color-sev-high-ink: #8f2412;
+  --color-sev-medium: #3d3d3d; /* grey wash */
+  --color-sev-medium-tint: #e2e2e0;
+  --color-sev-medium-ink: #262626;
+  --color-sev-low: #707070; /* outline */
+  --color-sev-low-tint: #f1f1ef;
+  --color-sev-low-ink: #3a3a3a;
 
-  --color-live: #17703a;
-  --color-live-tint: #e4f5ea;
-  --color-stale: #8a5300;
-  --color-stale-tint: #fcf1d6;
-  --color-changed: #fff3c4; /* a row that grew, held until you look at it */
+  --color-live: #1f1f1f;
+  --color-live-tint: #ececea;
+  --color-stale: #5c5c5c;
+  --color-stale-tint: #f2f2f0;
+  --color-changed: #e0e0dc; /* a row that grew, held until you look at it; deeper than sunk so it never reads as the open row */
+
+  /* Square, like the reference: every radius utility resolves to 2-3px (the status pill stays round). */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 3px;
 
   --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-display: "Montserrat Variable", "Public Sans Variable", sans-serif; /* the band and the wordmark only */
 }
 
 body {
@@ -74,6 +88,57 @@ li {
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
+/* A level block's count ticks in from above when it changes: the change is the news. */
+@keyframes count-tick {
+  from { transform: translateY(-40%); opacity: 0; }
+}
+
+.count-tick {
+  display: inline-block;
+  animation: count-tick 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .dot-live { animation: none; }
+  .dot-live,
+  .count-tick { animation: none; }
+}
+
+/* Frames are quiet hairlines; the brush is spent in two places only: the Alerts panel's inked edge (the page's work
+ * surface) and the band's torn edge. Spread thinly over every panel it was invisible and flattened the hierarchy.
+ * The inked edge is its own layer run through a displacement filter (InkDefs), so the data inside stays crisp. */
+.ink-panel {
+  position: relative;
+  border: 1px solid var(--color-hairline);
+  border-radius: 2px;
+}
+
+.ink-panel-brush {
+  border-color: transparent;
+}
+
+.ink-panel-brush::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 2px;
+  filter: url(#ink-brush);
+  pointer-events: none;
+}
+
+.ink-btn {
+  color: #fff;
+  background: var(--color-ink);
+}
+
+.ink-btn:hover { background: #2e2e2e; }
+
+.ink-btn:disabled {
+  color: var(--color-muted);
+  background: var(--color-sunk);
+}
+
+/* On the charcoal band and the vermilion flood an ink focus ring would vanish (1.1:1): ring in the band's light ink. */
+.bg-band :focus-visible {
+  outline-color: var(--color-band-text);
 }

@@ -59,6 +59,8 @@ Approved by the human in Phase 4: @tailwindcss/vite, @vitejs/plugin-react, @test
 
 Approved by the human for the dashboard redesign (post-v1): self-hosted font packages (@fontsource / @fontsource-variable), lucide-react.
 
+Approved by the human for dashboard motion (post-v1): gsap (incl. its Flip plugin; GSAP's Standard no-charge license, not an OSI licence).
+
 Anything else: ask first.
 
 ## Logging progress

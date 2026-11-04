@@ -41,7 +41,7 @@ export default function MuteEditor({ alert, onSave, onCancel }: Props) {
           <span className="w-36 text-muted">{LABEL[f]}</span>
           <label className="inline-flex items-center gap-1.5">
             <input type="radio" name={`mute-${f}`} checked={!any[f]} onChange={() => setAny({ ...any, [f]: false })} />
-            <span className="font-mono text-[13px]">{value(f)}</span>
+            <span className={f === "attack_type" ? "" : "font-mono text-[13px]"}>{value(f)}</span>
           </label>
           <label className="inline-flex items-center gap-1.5">
             <input type="radio" name={`mute-${f}`} checked={any[f]} onChange={() => setAny({ ...any, [f]: true })} />
@@ -55,7 +55,7 @@ export default function MuteEditor({ alert, onSave, onCancel }: Props) {
         </p>
       )}
       <div className="flex items-center gap-2">
-        <button type="button" disabled={allAny || busy} onClick={save} className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:bg-sunk disabled:text-muted">
+        <button type="button" disabled={allAny || busy} onClick={save} className="ink-btn rounded px-3 py-1.5 text-sm font-semibold text-white">
           {busy ? "Saving…" : "Mute"}
         </button>
         <button type="button" onClick={onCancel} className="rounded px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-tint">Cancel</button>
